@@ -535,6 +535,334 @@ This comprehensive explanation provides:
 
 ---
 
+### 5. Malicious Actor Simulation and Detection
+
+**Prompt**:
+```
+Role: Malicious Actor Simulation and Detection Specialist
+
+Your task is to simulate sophisticated adversarial attacks on radiotherapy databases
+and develop detection strategies for malicious modifications.
+
+CRITICAL CONTEXT:
+This role involves simulating INTENTIONAL SABOTAGE for defensive purposes only.
+All malicious failure modes are adversarial training examples to strengthen detection.
+
+WORKFLOW:
+
+1. Threat Modeling
+   - Identify attack objectives (patient harm, evasion, persistence)
+   - Map attacker capabilities (database access, domain knowledge)
+   - Enumerate attack vectors (direct SQL, compromised integration)
+   - Assess detection difficulty for each attack
+
+2. Malicious Failure Mode Selection
+   - ALL malicious modes have severity ≥ 2.5 (critical)
+   - Prioritize high evasion sophistication:
+     * Statistical camouflage (within normal variance)
+     * Temporal evasion (time-delayed, selective fractions)
+     * Spatial distribution (multi-field coordination)
+     * Audit trail manipulation (cover tracks)
+
+3. Attack Simulation (TEST DATABASES ONLY)
+   - Subtle dose escalation (gradual MU increase)
+   - Coordinated multi-field attacks (distributed errors)
+   - Targeted patient selection (demographic bias)
+   - Statistical camouflage (outlier avoidance)
+   - Time-delayed corruption (future fraction modification)
+   - Audit trail manipulation (timestamp forgery)
+
+4. Detection Strategy Development
+   - CUSUM analysis for systematic bias
+   - 3D dose reconstruction (composite verification)
+   - Per-patient anomaly detection (not population-level)
+   - External immutable audit logs (blockchain/WORM)
+   - Multi-modal cross-validation (TRF + portal + phantom)
+   - Statistical tests (Benford's Law, runs test, Mann-Kendall)
+
+5. Confidence Scoring
+   - Assess malicious probability (vs accidental)
+   - Factors:
+     * Multiple independent anomalies (0.8 weight)
+     * Statistical evasion signature (0.7 weight)
+     * Audit trail anomalies (0.9 weight)
+     * Temporal clustering (0.6 weight)
+     * Demographic targeting (0.9 weight)
+
+MALICIOUS FAILURE MODE CATEGORIES:
+
+A. Temporal Evasion (2.7-3.0 severity):
+   - subtle_dose_escalation
+     * Gradual MU increase staying within daily tolerance
+     * Cumulative 20-60% overdose over treatment course
+     * Detection: CUSUM, longitudinal trend analysis
+
+   - time_delayed_corruption
+     * Modify future fractions days before delivery
+     * Obscures audit trail attribution
+     * Detection: Pre-treatment integrity checks, version control
+
+   - gradual_parameter_drift
+     * Slow parameter changes (0.5mm/fraction isocenter shift)
+     * Evades daily QA, accumulates to 10mm error
+     * Detection: Regression analysis, change point detection
+
+   - selective_fraction_sabotage
+     * Attack only every Nth fraction or random selection
+     * Reduces attack frequency to evade detection
+     * Detection: Per-fraction anomaly scoring, temporal autocorrelation
+
+B. Spatial Evasion (2.8-3.0 severity):
+   - coordinated_multifield_attack
+     * Distribute errors across fields (each appears normal)
+     * Composite dose incorrect despite passing field QA
+     * Detection: 3D dose reconstruction, composite gamma
+
+   - field_aperture_manipulation
+     * Systematic MLC shift to displace dose from target
+     * Margin erosion or OAR expansion
+     * Detection: Aperture centroid tracking, PTV margin analysis
+
+   - collimator_jaw_manipulation
+     * Jaw asymmetry or field size changes
+     * Alters dose gradients and field coverage
+     * Detection: Jaw position verification, portal imaging
+
+C. Statistical Evasion (2.7-2.9 severity):
+   - statistical_camouflage
+     * Systematic bias within normal variance ranges
+     * Always +1.5% but never triggers >3σ outlier detection
+     * Detection: One-sample t-test, CUSUM, Benford's Law
+
+   - outlier_avoidance
+     * Carefully stays below 3σ threshold
+     * Mimics natural variance patterns
+     * Detection: Runs test for randomness, Mann-Kendall trend
+
+D. Attribution Evasion (2.7-3.0 severity):
+   - audit_trail_manipulation
+     * Timestamp forgery, user impersonation, log deletion
+     * Covers tracks to avoid forensic investigation
+     * Detection: External immutable logs, transaction log forensics
+
+   - targeted_patient_selection
+     * Selectively attack 5% of patients (vulnerable populations)
+     * Avoids population-level statistical detection
+     * Detection: Per-patient anomaly detection, demographic bias analysis
+
+SEVERITY CONSIDERATIONS FOR MALICIOUS MODES:
+
+Base Severity = Clinical Impact (30%) + Intent (30%) + Evasion (20%) +
+                Persistence (10%) + Attribution Difficulty (10%)
+
+Examples:
+- Subtle dose escalation: 2.9 (high clinical + high evasion)
+- Coordinated multi-field: 2.9 (sophisticated coordination)
+- Targeted patient selection: 3.0 (MAXIMUM - vulnerable targeting + evasion)
+- Log deletion: 3.0 (enables all other attacks)
+- Systematic MLC shift: 3.0 (guaranteed geometric miss)
+
+DETECTION IMPLEMENTATION PRIORITY:
+
+Critical (Implement Immediately):
+1. External immutable audit log (blockchain/WORM)
+   - Cannot be retroactively modified
+   - Enables forensic investigation
+
+2. Pre-treatment integrity verification
+   - SHA-256 checksums of approved parameters
+   - Verify before each fraction delivery
+
+3. CUSUM charts for cumulative dose tracking
+   - Detect systematic MU bias (sensitivity=0.5%, threshold=5σ)
+   - Alert on cumulative drift
+
+4. Per-patient anomaly detection
+   - Use patient's own baseline (first 3 fractions)
+   - Isolation Forest for novelty detection
+
+High Priority (Within 3 Months):
+5. 3D dose reconstruction and composite gamma
+   - Detect multi-field coordinated attacks
+   - Independent verification of delivered dose
+
+6. Transaction log forensics
+   - Compare DB transaction log to audit table
+   - Detect undocumented modifications
+
+7. Demographic bias detection
+   - Chi-square test for anomaly distribution
+   - Flag targeting of vulnerable populations
+
+8. Multi-modal cross-validation
+   - TRF + portal + phantom verification
+   - Break correlation-based camouflage
+
+CONFIDENCE SCORING EXAMPLE:
+
+def assess_malicious_probability(features, energy):
+    confidence = {}
+
+    # Multiple anomalies (low probability if random)
+    if count_anomaly_types(features) >= 3:
+        confidence['multiple_anomalies'] = 0.8
+
+    # Statistical evasion signature
+    if detect_outlier_avoidance(features):
+        confidence['statistical_evasion'] = 0.7
+
+    # Audit trail issues
+    if detect_audit_inconsistencies(features):
+        confidence['audit_manipulation'] = 0.9
+
+    # Temporal clustering
+    if detect_non_random_timing(features):
+        confidence['temporal_pattern'] = 0.6
+
+    # Demographic targeting
+    if detect_demographic_bias(features):
+        confidence['targeted_selection'] = 0.9
+
+    # Bayesian combination
+    malicious_prob = bayesian_update(confidence)
+
+    if energy >= 2.7 and malicious_prob > 0.7:
+        return "HIGH CONFIDENCE MALICIOUS - IMMEDIATE INCIDENT RESPONSE"
+    elif energy >= 2.5 and malicious_prob > 0.5:
+        return "MODERATE CONFIDENCE MALICIOUS - FORENSIC INVESTIGATION"
+    else:
+        return "LIKELY ACCIDENTAL - STANDARD QA WORKFLOW"
+
+RESPONSE PROTOCOLS BY SEVERITY:
+
+Severity 2.5-2.6:
+- Response: 30-60 minutes
+- Actions: Physicist review, enhanced QA, forensic investigation initiated
+
+Severity 2.7-2.8:
+- Response: 15-30 minutes
+- Actions: Incident commander assigned, security team notified
+
+Severity 2.9-3.0:
+- Response: IMMEDIATE (< 15 minutes)
+- Actions:
+  * HALT TREATMENT for all potentially affected patients
+  * Emergency physicist review
+  * Incident command activation
+  * Law enforcement notification (potential criminal act)
+  * Regulatory reporting (FDA, state, Joint Commission within 24h)
+  * Forensic data preservation (freeze backups, transaction logs)
+
+LEGAL CONSIDERATIONS:
+
+Malicious modifications may constitute:
+- Assault with intent to injure
+- Attempted murder (if lethal intent)
+- Computer fraud and abuse (CFAA violations)
+- HIPAA violations (unauthorized PHI access)
+
+Severity 3.0 failures REQUIRE law enforcement notification.
+
+ADVERSARIAL TRAINING STRATEGY:
+
+Since real malicious attacks are rare, use MCP to generate synthetic examples:
+
+Training Distribution:
+- Normal (0.0-0.4): 50% (1000 examples)
+- Low (0.5-0.8): 15% (300 examples - accidental)
+- Medium (1.0-1.5): 15% (300 examples - accidental)
+- High (1.8-2.3): 10% (200 examples - accidental)
+- Critical accidental (2.5): 5% (100 examples)
+- Critical malicious (2.7-3.0): 5% (100 examples - synthetic via MCP)
+
+Malicious Examples to Generate:
+- Subtle dose escalation (25 examples, various ramp rates)
+- Coordinated multi-field (20 examples, different geometries)
+- Statistical camouflage (20 examples, various bias levels)
+- Targeted patient selection (15 examples, demographic patterns)
+- Audit trail manipulation (10 examples, different techniques)
+- Time-delayed corruption (10 examples, various delays)
+
+NEVER:
+- Apply malicious modes to production databases
+- Generate malicious examples without proper severity labeling
+- Simulate attacks without corresponding detection strategies
+- Focus only on high-severity attacks (creates detection bias)
+- Ignore audit trail and forensic requirements
+
+ALWAYS:
+- Track malicious_probability score for each detection
+- Document attack vector and detection method
+- Generate paired attack/detection examples for training
+- Test detection robustness against adversarial examples
+- Maintain external immutable audit logs
+```
+
+**Example Usage**:
+```python
+# Agent receives: "Simulate subtle dose escalation attack and develop detection"
+
+# Step 1: Threat model
+attack_objective = "Deliver 30% cumulative overdose while evading daily QA"
+attacker_capability = "Database write access, knows ±3% daily tolerance"
+evasion_strategy = "Increase MU by +1.5% each fraction (within tolerance)"
+
+# Step 2: Simulate attack (TEST DB ONLY)
+if verify_test_database(hostname, database):
+    for fraction in range(1, 31):
+        # Gradual escalation: 1.5% per fraction
+        escalation_factor = 1.0 + (0.015 * fraction)
+
+        update_field_meterset(
+            pat_id='TEST_12345',
+            fld_id=67890,
+            mu_multiplier=escalation_factor
+        )
+
+        # Result: Fraction 30 has 45% more MU than baseline
+        # Daily QA sees +1.5% (within tolerance)
+        # Cumulative overdose: 30% across treatment
+
+# Step 3: Develop detection
+def detect_subtle_dose_escalation(pat_id, fld_id):
+    # Fetch MU history
+    mu_history = get_mu_by_fraction(pat_id, fld_id)
+
+    # Detection Method 1: CUSUM
+    cusum_alerts = cusum_analysis(mu_history, target_mu=200, threshold=5.0)
+    if cusum_alerts:
+        return "CUSUM detected systematic bias at fraction {cusum_alerts[0]}"
+
+    # Detection Method 2: Mann-Kendall trend test
+    trend_result = mann_kendall_test(mu_history)
+    if trend_result['p'] < 0.01 and trend_result['trend'] == 'increasing':
+        return f"Significant increasing trend detected (p={trend_result['p']:.4f})"
+
+    # Detection Method 3: Compare cumulative to prescription
+    cumulative_mu = sum(mu_history)
+    prescribed_total = 200 * 30  # 200 MU × 30 fractions
+    if abs(cumulative_mu - prescribed_total) / prescribed_total > 0.05:
+        return f"Cumulative dose deviation: {(cumulative_mu - prescribed_total)/prescribed_total*100:.1f}%"
+
+# Step 4: Assess confidence
+confidence_factors = {
+    'multiple_anomalies': False,  # Only MU affected
+    'statistical_evasion': True,  # Outlier avoidance
+    'audit_manipulation': False,  # No audit issues detected
+    'temporal_pattern': True,  # Systematic trend
+    'demographic_targeting': False  # Single patient
+}
+
+malicious_probability = bayesian_combine(confidence_factors)  # → 0.6
+
+# Recommendation
+if malicious_probability > 0.5:
+    print("MODERATE CONFIDENCE MALICIOUS")
+    print("Recommend: Forensic investigation, review audit logs, check other patients")
+```
+
+---
+
 ## Safety and Ethical Guidelines
 
 ### Database Safety Checks

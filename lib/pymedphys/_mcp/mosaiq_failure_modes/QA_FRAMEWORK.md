@@ -14,6 +14,7 @@ This document outlines the Quality Assurance framework for detecting data corrup
 8. [Invalid Offset Data](#8-invalid-offset-data)
 9. [Meterset Inconsistency](#9-meterset-inconsistency)
 10. [MLC Leaf Count Mismatch](#10-mlc-leaf-count-mismatch)
+11. [Malicious Actor Detection](#11-malicious-actor-detection)
 
 ---
 
@@ -1027,6 +1028,815 @@ CREATE TABLE SiteOffsetLimits (...);
 CREATE TABLE TreatmentCheckpoints (...);
 CREATE TABLE DeliveredMU (...);
 ```
+
+---
+
+## 11. Malicious Actor Detection
+
+### Overview
+
+Malicious actor failure modes represent intentional sabotage attempts by adversaries with database access. Unlike accidental corruption, these attacks are designed to evade detection through:
+
+- **Statistical camouflage**: Staying within normal variance ranges
+- **Temporal evasion**: Spreading attacks across time or targeting specific windows
+- **Spatial distribution**: Coordinating errors across fields/patients
+- **Audit trail manipulation**: Hiding evidence of modifications
+
+**All malicious failure modes have severity 2.5-3.0** (critical) due to deliberate intent to harm.
+
+**See [MALICIOUS_ACTORS.md](MALICIOUS_ACTORS.md) for complete documentation.**
+
+---
+
+### 11.1 Subtle Dose Escalation Detection
+
+**Threat**: Gradual MU increases across fractions that stay within daily tolerance but accumulate to harmful cumulative dose.
+
+#### QA Checks
+
+##### 11.1.1 Cumulative Dose Tracking
+
+```sql
+-- Track cumulative delivered MU vs prescription
+WITH CumulativeMU AS (
+    SELECT
+        tt.Pat_ID1,
+        tf.FLD_ID,
+        tf.Field_Name,
+        SUM(tt.Delivered_MU) AS cumulative_mu,
+        tf.Meterset * COUNT(*) AS expected_cumulative_mu,
+        COUNT(*) AS fraction_count
+    FROM TrackTreatment tt
+    JOIN TxField tf ON tt.FLD_ID = tf.FLD_ID
+    GROUP BY tt.Pat_ID1, tf.FLD_ID, tf.Field_Name, tf.Meterset
+)
+SELECT
+    Pat_ID1,
+    FLD_ID,
+    Field_Name,
+    cumulative_mu,
+    expected_cumulative_mu,
+    (cumulative_mu - expected_cumulative_mu) / expected_cumulative_mu * 100 AS percent_deviation,
+    fraction_count
+FROM CumulativeMU
+WHERE ABS((cumulative_mu - expected_cumulative_mu) / expected_cumulative_mu) > 0.05  -- >5% deviation
+ORDER BY ABS(percent_deviation) DESC;
+```
+
+##### 11.1.2 CUSUM (Cumulative Sum) Analysis
+
+```python
+def cusum_mu_analysis(pat_id: str, fld_id: int, target_mu: float, threshold: float = 5.0):
+    """Detect systematic MU bias using CUSUM control chart.
+
+    Args:
+        pat_id: Patient ID
+        fld_id: Field ID
+        target_mu: Expected MU per fraction
+        threshold: CUSUM threshold for alert (default 5.0)
+
+    Returns:
+        List of fraction numbers where CUSUM exceeds threshold
+    """
+    import numpy as np
+
+    # Fetch MU history
+    mu_history = get_mu_history(pat_id, fld_id)  # [fraction_1_mu, fraction_2_mu, ...]
+
+    # CUSUM parameters
+    sensitivity = 0.5  # Detect shifts of 0.5% or more
+    cusum_pos = 0
+    cusum_neg = 0
+    alerts = []
+
+    for i, delivered_mu in enumerate(mu_history):
+        deviation = (delivered_mu - target_mu) / target_mu * 100  # Percent deviation
+
+        # Update CUSUM
+        cusum_pos = max(0, cusum_pos + deviation - sensitivity)
+        cusum_neg = min(0, cusum_neg + deviation + sensitivity)
+
+        # Check thresholds
+        if cusum_pos > threshold:
+            alerts.append({
+                'fraction': i + 1,
+                'type': 'positive_drift',
+                'cusum': cusum_pos,
+                'delivered_mu': delivered_mu
+            })
+
+        if cusum_neg < -threshold:
+            alerts.append({
+                'fraction': i + 1,
+                'type': 'negative_drift',
+                'cusum': cusum_neg,
+                'delivered_mu': delivered_mu
+            })
+
+    return alerts
+```
+
+##### 11.1.3 Longitudinal Trend Detection
+
+```python
+def detect_mu_trend(pat_id: str, fld_id: int):
+    """Detect systematic trends in MU using Mann-Kendall test."""
+    import scipy.stats
+    import pymannkendall as mk
+
+    mu_history = get_mu_history(pat_id, fld_id)
+    fraction_numbers = list(range(1, len(mu_history) + 1))
+
+    # Mann-Kendall trend test (non-parametric, robust to outliers)
+    result = mk.original_test(mu_history)
+
+    if result.p < 0.01 and result.trend in ['increasing', 'decreasing']:
+        # Calculate Sen's slope (magnitude of trend)
+        slope, intercept = scipy.stats.theilslopes(mu_history, fraction_numbers)[:2]
+
+        return {
+            'alert': True,
+            'trend': result.trend,
+            'p_value': result.p,
+            'slope_per_fraction': slope,
+            'cumulative_change': slope * len(mu_history)
+        }
+
+    return {'alert': False}
+```
+
+---
+
+### 11.2 Time-Delayed Corruption Detection
+
+**Threat**: Modifications made to future fractions, creating temporal gap between attack and manifestation.
+
+#### QA Checks
+
+##### 11.2.1 Pre-Treatment Integrity Verification
+
+```python
+import hashlib
+import json
+
+def verify_treatment_integrity(pat_id: str, fld_id: int, fraction_number: int) -> bool:
+    """Verify treatment parameters haven't been modified since approval.
+
+    Returns:
+        True if integrity verified, False if modification detected
+    """
+    # Fetch current treatment parameters
+    current_params = get_treatment_parameters(fld_id)
+
+    # Calculate checksum
+    param_json = json.dumps(current_params, sort_keys=True)
+    current_checksum = hashlib.sha256(param_json.encode()).hexdigest()
+
+    # Retrieve baseline checksum from approval
+    baseline_checksum = get_approved_baseline_checksum(fld_id)
+
+    if current_checksum != baseline_checksum:
+        alert_modification_detected(pat_id, fld_id, fraction_number)
+        return False
+
+    return True
+```
+
+##### 11.2.2 Audit Trail Temporal Analysis
+
+```sql
+-- Flag modifications to future fractions (suspicious pattern)
+WITH FutureFractionMods AS (
+    SELECT
+        al.table_name,
+        al.record_id,
+        al.modified_timestamp,
+        al.user_id,
+        tt.Create_DtTm AS treatment_datetime,
+        DATEDIFF(hour, al.modified_timestamp, tt.Create_DtTm) AS hours_before_treatment
+    FROM audit_log al
+    JOIN TxFieldPoint tfp ON al.record_id = tfp.TFP_ID AND al.table_name = 'TxFieldPoint'
+    JOIN TxField tf ON tfp.FLD_ID = tf.FLD_ID
+    JOIN TrackTreatment tt ON tf.FLD_ID = tt.FLD_ID
+    WHERE al.modified_timestamp < (tt.Create_DtTm - INTERVAL '24 hours')  -- Modified >24h before delivery
+)
+SELECT
+    user_id,
+    COUNT(*) AS future_modification_count,
+    AVG(hours_before_treatment) AS avg_hours_before,
+    MIN(modified_timestamp) AS first_occurrence,
+    MAX(modified_timestamp) AS last_occurrence
+FROM FutureFractionMods
+GROUP BY user_id
+HAVING COUNT(*) > 5  -- More than 5 occurrences is suspicious
+ORDER BY future_modification_count DESC;
+```
+
+##### 11.2.3 Parameter Version Control
+
+```python
+def track_parameter_versions(fld_id: int):
+    """Maintain version history of treatment parameters."""
+    import datetime
+
+    # Snapshot current parameters
+    current_params = get_treatment_parameters(fld_id)
+
+    # Store in version history table
+    version_entry = {
+        'fld_id': fld_id,
+        'timestamp': datetime.datetime.now(),
+        'parameters': current_params,
+        'checksum': calculate_checksum(current_params),
+        'user_id': get_current_user()
+    }
+
+    store_version_history(version_entry)
+
+    # Compare to previous version
+    previous_version = get_latest_version(fld_id, before=version_entry['timestamp'])
+
+    if previous_version:
+        diff = compute_parameter_diff(previous_version['parameters'], current_params)
+        if diff:
+            log_parameter_change(fld_id, diff, version_entry['timestamp'])
+```
+
+---
+
+### 11.3 Coordinated Multi-Field Attack Detection
+
+**Threat**: Distribute errors across fields such that individual fields appear normal but composite dose is incorrect.
+
+#### QA Checks
+
+##### 11.3.1 3D Dose Reconstruction
+
+```python
+def reconstruct_delivered_dose_3d(pat_id: str, trf_files: list, ct_dataset, structure_set):
+    """Calculate 3D dose distribution from delivered parameters.
+
+    Args:
+        pat_id: Patient ID
+        trf_files: List of TRF file paths (machine logs)
+        ct_dataset: CT image dataset
+        structure_set: DICOM RT Structure Set
+
+    Returns:
+        3D dose grid
+    """
+    from pymedphys import Delivery
+
+    dose_grid = initialize_dose_grid(ct_dataset)
+
+    for trf_file in trf_files:
+        # Parse TRF file to get delivered parameters
+        delivery = Delivery.from_trf(trf_file)
+
+        # Calculate dose contribution using Monte Carlo
+        field_dose = calculate_dose_monte_carlo(
+            ct_dataset=ct_dataset,
+            delivery=delivery,
+            grid=dose_grid.shape
+        )
+
+        dose_grid += field_dose
+
+    return dose_grid
+```
+
+##### 11.3.2 Composite Gamma Analysis
+
+```python
+def composite_gamma_analysis(planned_dose, delivered_dose, dose_threshold=3, distance_mm=3):
+    """Compare delivered composite dose to plan using gamma analysis.
+
+    Args:
+        planned_dose: 3D dose array from treatment plan
+        delivered_dose: 3D dose array from reconstruction
+        dose_threshold: Dose difference threshold (%)
+        distance_mm: Distance to agreement (mm)
+
+    Returns:
+        Gamma pass rate and failure regions
+    """
+    from pymedphys import gamma
+
+    gamma_result = gamma(
+        reference_dose=planned_dose,
+        evaluation_dose=delivered_dose,
+        dose_percent_threshold=dose_threshold,
+        distance_mm_threshold=distance_mm,
+        lower_percent_dose_cutoff=10  # Ignore low dose regions
+    )
+
+    pass_rate = (gamma_result <= 1.0).sum() / gamma_result.size * 100
+
+    if pass_rate < 95:  # Alert if <95% pass rate
+        failure_regions = identify_failure_regions(gamma_result)
+        return {
+            'alert': True,
+            'pass_rate': pass_rate,
+            'failure_regions': failure_regions
+        }
+
+    return {'alert': False, 'pass_rate': pass_rate}
+```
+
+##### 11.3.3 Aperture Centroid Tracking
+
+```python
+def detect_systematic_aperture_shift(pat_id: str, fld_ids: list):
+    """Detect coordinated aperture shifts across multiple fields.
+
+    Args:
+        pat_id: Patient ID
+        fld_ids: List of field IDs for the patient
+
+    Returns:
+        Alert if systematic shift detected across all fields
+    """
+    import numpy as np
+
+    centroids = []
+    for fld_id in fld_ids:
+        mlc_data = get_mlc_positions(fld_id)
+        centroid = calculate_aperture_centroid(mlc_data)
+        centroids.append(centroid)
+
+    # Check if all centroids shifted in same direction
+    centroid_shifts = np.array(centroids) - np.array(get_planned_centroids(fld_ids))
+    mean_shift = np.mean(centroid_shifts, axis=0)
+    shift_consistency = np.linalg.norm(np.std(centroid_shifts, axis=0))
+
+    # Alert if mean shift > 2mm and highly consistent (low variance)
+    if np.linalg.norm(mean_shift) > 2.0 and shift_consistency < 1.0:
+        return {
+            'alert': True,
+            'mean_shift_mm': mean_shift,
+            'shift_direction': mean_shift / np.linalg.norm(mean_shift),
+            'consistency': shift_consistency
+        }
+
+    return {'alert': False}
+```
+
+---
+
+### 11.4 Statistical Camouflage Detection
+
+**Threat**: Systematic bias hidden within normal variance ranges through careful statistical manipulation.
+
+#### QA Checks
+
+##### 11.4.1 One-Sample t-Test for Systematic Bias
+
+```python
+def detect_systematic_bias(parameter_series: list, expected_mean: float):
+    """Test if parameter mean significantly differs from expected value.
+
+    Args:
+        parameter_series: List of parameter values across fractions
+        expected_mean: Expected mean value (from treatment plan)
+
+    Returns:
+        Alert if significant bias detected (p < 0.01)
+    """
+    import scipy.stats
+    import numpy as np
+
+    # One-sample t-test
+    t_statistic, p_value = scipy.stats.ttest_1samp(parameter_series, expected_mean)
+
+    actual_mean = np.mean(parameter_series)
+    bias = actual_mean - expected_mean
+
+    if p_value < 0.01:  # Statistically significant bias
+        return {
+            'alert': True,
+            'p_value': p_value,
+            't_statistic': t_statistic,
+            'expected_mean': expected_mean,
+            'actual_mean': actual_mean,
+            'bias': bias,
+            'bias_percent': bias / expected_mean * 100
+        }
+
+    return {'alert': False}
+```
+
+##### 11.4.2 Benford's Law Analysis
+
+```python
+def benford_law_test(data: list):
+    """Detect artificial data using first-digit distribution analysis.
+
+    Natural data follows Benford's Law: P(d) = log10(1 + 1/d)
+    Artificial data often violates this distribution.
+
+    Args:
+        data: List of numerical values
+
+    Returns:
+        Alert if significant deviation from Benford's Law detected
+    """
+    import numpy as np
+    import scipy.stats
+
+    # Extract first digits
+    first_digits = [int(str(abs(x)).replace('.', '')[0]) for x in data if x != 0]
+
+    # Expected Benford distribution
+    benford_expected = [np.log10(1 + 1/d) for d in range(1, 10)]
+
+    # Observed distribution
+    observed_counts = np.histogram(first_digits, bins=range(1, 11))[0]
+    observed_freq = observed_counts / len(first_digits)
+
+    # Expected counts
+    expected_counts = len(first_digits) * np.array(benford_expected)
+
+    # Chi-square test
+    chi2_statistic, p_value = scipy.stats.chisquare(observed_counts, expected_counts)
+
+    if p_value < 0.01:  # Significant deviation from Benford's Law
+        return {
+            'alert': True,
+            'p_value': p_value,
+            'chi2_statistic': chi2_statistic,
+            'interpretation': 'Data may be artificially generated or manipulated'
+        }
+
+    return {'alert': False}
+```
+
+##### 11.4.3 Run Test for Randomness
+
+```python
+def runs_test_randomness(parameter_series: list, median: float = None):
+    """Test if sequence is random or has systematic patterns.
+
+    A 'run' is a sequence of consecutive values above/below median.
+    Non-random data has too few or too many runs.
+
+    Args:
+        parameter_series: List of parameter values
+        median: Expected median (if None, use sample median)
+
+    Returns:
+        Alert if non-random pattern detected
+    """
+    import numpy as np
+    from statsmodels.sandbox.stats.runs import runstest_1samp
+
+    if median is None:
+        median = np.median(parameter_series)
+
+    # Convert to binary sequence (above/below median)
+    binary_series = [1 if x > median else 0 for x in parameter_series]
+
+    # Runs test
+    z_statistic, p_value = runstest_1samp(binary_series)
+
+    if p_value < 0.01:  # Non-random pattern
+        return {
+            'alert': True,
+            'p_value': p_value,
+            'z_statistic': z_statistic,
+            'interpretation': 'Too few runs' if z_statistic < 0 else 'Too many runs'
+        }
+
+    return {'alert': False}
+```
+
+---
+
+### 11.5 Audit Trail Manipulation Detection
+
+**Threat**: Modification of audit logs to hide malicious database changes.
+
+#### QA Checks
+
+##### 11.5.1 External Immutable Audit Log
+
+```python
+class BlockchainAuditLog:
+    """Write-once audit log using blockchain for immutability."""
+
+    def __init__(self):
+        self.chain = []
+
+    def log_database_modification(self, table: str, record_id: int, user: str,
+                                  timestamp, operation: str, old_value, new_value):
+        """Log database write to immutable blockchain.
+
+        This log cannot be retroactively modified without detection.
+        """
+        import hashlib
+
+        # Previous block hash (chain integrity)
+        previous_hash = self.chain[-1]['hash'] if self.chain else '0' * 64
+
+        # Create entry
+        entry = {
+            'table': table,
+            'record_id': record_id,
+            'user': user,
+            'timestamp': timestamp.isoformat(),
+            'operation': operation,
+            'old_value': str(old_value),
+            'new_value': str(new_value),
+            'previous_hash': previous_hash
+        }
+
+        # Calculate hash (includes previous hash for chain integrity)
+        entry_json = json.dumps(entry, sort_keys=True)
+        entry['hash'] = hashlib.sha256(entry_json.encode()).hexdigest()
+
+        # Append to chain
+        self.chain.append(entry)
+
+        # Write to WORM storage (Write Once Read Many)
+        self.persist_to_worm_storage(entry)
+
+    def verify_chain_integrity(self):
+        """Verify no blocks have been tampered with."""
+        for i in range(1, len(self.chain)):
+            if self.chain[i]['previous_hash'] != self.chain[i-1]['hash']:
+                raise IntegrityError(f"Chain broken at block {i}")
+```
+
+##### 11.5.2 Transaction Log Forensics
+
+```sql
+-- Detect undocumented database modifications using SQL Server transaction log
+-- Compare transaction log to audit table
+WITH TransactionLogEntries AS (
+    SELECT
+        [Transaction ID] AS txn_id,
+        [Begin Time] AS txn_time,
+        [Operation] AS operation,
+        [AllocUnitName] AS table_name,
+        [Page ID] AS page_id,
+        [Slot ID] AS slot_id
+    FROM sys.fn_dblog(NULL, NULL)
+    WHERE [Operation] IN ('LOP_MODIFY_ROW', 'LOP_INSERT_ROWS', 'LOP_DELETE_ROWS')
+      AND [AllocUnitName] LIKE '%TxField%' OR [AllocUnitName] LIKE '%TrackTreatment%'
+),
+AuditedTransactions AS (
+    SELECT
+        transaction_id,
+        timestamp
+    FROM audit_log
+)
+SELECT
+    tl.txn_id,
+    tl.txn_time,
+    tl.operation,
+    tl.table_name,
+    'NOT IN AUDIT LOG' AS audit_status
+FROM TransactionLogEntries tl
+LEFT JOIN AuditedTransactions at ON tl.txn_id = at.transaction_id
+WHERE at.transaction_id IS NULL  -- Transactions not in audit log (suspicious)
+ORDER BY tl.txn_time DESC;
+```
+
+##### 11.5.3 User Session Impossibility Detection
+
+```python
+def detect_impossible_user_activity(user_id: str, audit_entries: list):
+    """Detect physically impossible user activity patterns.
+
+    Examples:
+    - User logged in from two locations simultaneously
+    - User traveled impossibly fast between locations
+    - User active during documented vacation/sick leave
+
+    Args:
+        user_id: User ID to analyze
+        audit_entries: List of audit log entries with timestamp and location
+
+    Returns:
+        List of impossible activity alerts
+    """
+    from geopy.distance import geodesic
+    from datetime import timedelta
+
+    alerts = []
+
+    for i in range(len(audit_entries) - 1):
+        current = audit_entries[i]
+        next_entry = audit_entries[i + 1]
+
+        time_diff = next_entry['timestamp'] - current['timestamp']
+        location_diff_km = geodesic(
+            current['location_coords'],
+            next_entry['location_coords']
+        ).kilometers
+
+        # Maximum credible speed (driving + some buffer)
+        max_speed_kmh = 120
+        required_speed = location_diff_km / (time_diff.total_seconds() / 3600)
+
+        if required_speed > max_speed_kmh:
+            alerts.append({
+                'user_id': user_id,
+                'entry_1': current,
+                'entry_2': next_entry,
+                'time_diff_minutes': time_diff.total_seconds() / 60,
+                'distance_km': location_diff_km,
+                'required_speed_kmh': required_speed,
+                'interpretation': f'User would need to travel {required_speed:.1f} km/h'
+            })
+
+    return alerts
+```
+
+---
+
+### 11.6 Targeted Patient Selection Detection
+
+**Threat**: Selective attacks on specific patients to avoid population-level statistical detection.
+
+#### QA Checks
+
+##### 11.6.1 Per-Patient Anomaly Detection
+
+```python
+def patient_level_anomaly_detection(pat_id: str):
+    """Detect anomalies at individual patient level (not just population).
+
+    Uses patient's own baseline (first 3 fractions) rather than
+    population statistics.
+
+    Args:
+        pat_id: Patient ID
+
+    Returns:
+        Anomaly alerts for specific fractions
+    """
+    from sklearn.ensemble import IsolationForest
+
+    # Extract features for all fractions
+    all_features = extract_multimodal_features(pat_id)
+
+    # Baseline: first 3 fractions (after setup, before potential attack)
+    baseline_features = all_features[:3]
+
+    # Train isolation forest on baseline
+    detector = IsolationForest(contamination=0.1, random_state=42)
+    detector.fit(baseline_features)
+
+    # Score all fractions
+    anomaly_scores = detector.score_samples(all_features)
+
+    # Alert on fractions with low scores
+    alerts = []
+    for i, score in enumerate(anomaly_scores):
+        if score < -0.5:  # Anomaly threshold
+            alerts.append({
+                'fraction': i + 1,
+                'anomaly_score': score,
+                'features': all_features[i]
+            })
+
+    return alerts
+```
+
+##### 11.6.2 Demographic Bias Analysis
+
+```python
+def detect_demographic_bias(anomaly_database):
+    """Test if anomalies disproportionately affect certain demographics.
+
+    Insider threats may target vulnerable populations (elderly, poor prognosis).
+
+    Args:
+        anomaly_database: DataFrame with anomaly flags and patient demographics
+
+    Returns:
+        Alert if significant demographic bias detected
+    """
+    import pandas as pd
+    import scipy.stats
+
+    # Test each demographic variable
+    demographic_vars = ['age_bin', 'diagnosis', 'treatment_site', 'prognosis']
+
+    alerts = []
+    for var in demographic_vars:
+        # Create contingency table: anomaly (yes/no) × demographic group
+        contingency = pd.crosstab(
+            anomaly_database['has_anomaly'],
+            anomaly_database[var]
+        )
+
+        # Chi-square test for independence
+        chi2, p_value, dof, expected = scipy.stats.chi2_contingency(contingency)
+
+        if p_value < 0.01:  # Significant association
+            # Calculate which groups are over/under-represented
+            observed = contingency.loc[True]  # Anomaly counts
+            expected_anomalies = expected[1]
+            bias_ratio = observed / expected_anomalies
+
+            alerts.append({
+                'demographic_variable': var,
+                'p_value': p_value,
+                'chi2_statistic': chi2,
+                'bias_ratios': bias_ratio.to_dict(),
+                'interpretation': f'Anomalies not uniformly distributed across {var}'
+            })
+
+    return alerts
+```
+
+##### 11.6.3 Multi-Anomaly Flagging
+
+```python
+def flag_multiple_independent_anomalies(pat_id: str, base_rate: float = 0.05):
+    """Flag patients with multiple independent anomalies.
+
+    The probability of multiple independent anomalies occurring by chance
+    is very low (product of individual probabilities).
+
+    Args:
+        pat_id: Patient ID
+        base_rate: Expected rate of individual anomalies (default 5%)
+
+    Returns:
+        Alert if multiple anomalies detected (low probability)
+    """
+    anomaly_types = {}
+
+    # Check different independent anomaly types
+    if detect_mlc_anomaly(pat_id):
+        anomaly_types['mlc'] = True
+
+    if detect_mu_anomaly(pat_id):
+        anomaly_types['mu'] = True
+
+    if detect_position_anomaly(pat_id):
+        anomaly_types['position'] = True
+
+    if detect_angle_anomaly(pat_id):
+        anomaly_types['angle'] = True
+
+    # Calculate probability of this many anomalies occurring by chance
+    num_anomalies = sum(anomaly_types.values())
+
+    if num_anomalies >= 2:
+        # Probability = base_rate^num_anomalies
+        probability = base_rate ** num_anomalies
+
+        return {
+            'alert': True,
+            'pat_id': pat_id,
+            'num_anomalies': num_anomalies,
+            'anomaly_types': [k for k, v in anomaly_types.items() if v],
+            'probability_by_chance': probability,
+            'interpretation': f'{num_anomalies} independent anomalies is highly suspicious (p={probability:.6f})'
+        }
+
+    return {'alert': False}
+```
+
+---
+
+### Additional Data Requirements for Malicious Detection
+
+1. **External Immutable Audit Log**: Blockchain or WORM storage off-database
+2. **Complete TRF Files**: Machine logs for all fractions (not just periodic)
+3. **Portal Dosimetry Images**: EPID images for every fraction
+4. **Network Time Protocol Logs**: For timestamp validation
+5. **User Geolocation Data**: IP addresses, badge swipes, physical access logs
+6. **Staff Schedules**: Shift assignments for correlation analysis
+7. **Patient Demographics**: Age, diagnosis, prognosis for bias detection
+8. **3D Dose Calculation Engine**: Monte Carlo or collapse cone for reconstruction
+9. **CT Datasets**: For delivered dose reconstruction
+10. **Structure Sets**: DICOM RT Struct for DVH analysis
+
+---
+
+### Malicious Detection Implementation Priority
+
+**Critical (Implement Immediately)**:
+1. External immutable audit log (blockchain/WORM)
+2. Pre-treatment integrity verification (checksums)
+3. CUSUM charts for cumulative dose tracking
+4. Per-patient anomaly detection
+
+**High Priority (Implement Within 3 Months)**:
+5. 3D dose reconstruction and gamma analysis
+6. Transaction log forensics
+7. Demographic bias detection
+8. Multi-modal cross-validation (TRF + portal + phantom)
+
+**Medium Priority (Implement Within 6 Months)**:
+9. User session impossibility detection
+10. Benford's Law and randomness tests
+11. Aperture centroid tracking
+12. Temporal clustering analysis
 
 ---
 

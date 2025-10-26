@@ -363,6 +363,238 @@ def daily_qa_report():
 
 ---
 
+## Malicious Intent Severity Factors
+
+### Overview
+
+**All malicious actor failure modes have severity ≥ 2.5** (critical range) regardless of technical characteristics. The severity scale for malicious failures considers multiple factors beyond clinical impact:
+
+### Severity Factors for Malicious Failures
+
+| Factor | Weight | Rationale |
+|--------|--------|-----------|
+| **Clinical Impact** | 30% | Actual patient harm potential |
+| **Intent to Harm** | 30% | Deliberate malice vs accidental error |
+| **Evasion Sophistication** | 20% | How difficult to detect |
+| **Persistence** | 10% | Can attack continue over time |
+| **Attribution Difficulty** | 10% | How hard to identify perpetrator |
+
+### Why Malicious = Critical Severity
+
+1. **Deliberate Intent**: Unlike accidental errors, malicious attacks are **designed to cause harm**
+2. **Evasion Built-In**: Attacks are crafted to **avoid detection**, making them more dangerous
+3. **Systematic Nature**: Malicious actors can **repeat attacks** on multiple patients
+4. **Trust Violation**: Indicates **compromised security** requiring incident response
+5. **Legal/Regulatory**: Potential for **criminal prosecution** and **regulatory sanctions**
+
+### Malicious Failure Mode Severity Breakdown
+
+#### Severity 2.5-2.8 (Critical - Lower Range)
+
+**Characteristics**: High clinical risk with some detectability
+
+| Failure Mode | Base Severity | Variants | Rationale |
+|--------------|--------------|----------|-----------|
+| `collimator_jaw_manipulation` | 2.6 | jaw_asymmetry (2.7), field_size_reduction (2.8) | Affects field geometry, but portal imaging can detect |
+| `audit_trail_manipulation` | 2.7 | audit_disable (2.7), timestamp_forgery (2.8) | Enables other attacks, but external logs can catch |
+| `gradual_parameter_drift` | 2.8 | gantry_drift (2.7), mu_creep (2.8), isocenter_shift (2.9) | Longitudinal analysis can detect trends |
+| `selective_fraction_sabotage` | 2.8 | periodic (2.7), random (2.9), calendar (2.8) | Per-fraction QA can identify anomalies |
+| `time_delayed_corruption` | 2.8 | db_trigger (2.7), scheduled (2.9), conditional (2.8) | Pre-treatment verification can catch |
+
+**Response**: Immediate physicist review, enhanced monitoring, forensic investigation
+
+---
+
+#### Severity 2.9-3.0 (Critical - Upper Range)
+
+**Characteristics**: Maximum clinical risk and/or extreme evasion sophistication
+
+| Failure Mode | Base Severity | Variants | Rationale |
+|--------------|--------------|----------|-----------|
+| `subtle_dose_escalation` | 2.9 | random_walk (2.9), within_tolerance (2.9) | Statistical camouflage, requires CUSUM detection |
+| `coordinated_multifield_attack` | 2.9 | compensatory_errors (3.0), geometric_shift (2.9) | Evades field-level QA, needs 3D reconstruction |
+| `statistical_camouflage` | 2.9 | within_tolerance_bias (2.9), outlier_avoidance (2.9) | Designed to evade statistical detection |
+| `field_aperture_manipulation` | 2.9 | systematic_shift (3.0), margin_erosion (2.9) | Direct geometric miss, high patient harm |
+| `targeted_patient_selection` | 3.0 | demographic_targeting (3.0), random_sampling (2.9) | **Maximum severity**: Vulnerable populations, difficult population-level detection |
+
+**Special Cases (Severity 3.0)**:
+- **Log Deletion** (3.0): Removes all evidence
+- **Systematic MLC Shift** (3.0): Guaranteed geometric miss
+- **Compensatory Errors** (3.0): Sophisticated multi-field coordination
+- **Fraction-Selective Overdose** (3.0): Deliberate targeting specific fractions
+- **Demographic Targeting** (3.0): Ethical violation + detection evasion
+
+**Response**: IMMEDIATE treatment halt, incident command activation, law enforcement notification, regulatory reporting
+
+---
+
+### Detection Difficulty vs Clinical Impact Matrix
+
+```
+                Low Detection Difficulty              High Detection Difficulty
+                (Standard QA catches it)               (Needs advanced analytics)
+High Clinical ┌─────────────────────────┬─────────────────────────────────┐
+Impact        │ Severity: 2.5-2.7       │ Severity: 2.9-3.0               │
+              │                         │                                 │
+              │ Examples:               │ Examples:                       │
+              │ - Jaw manipulation      │ - Statistical camouflage        │
+              │ - Parameter drift       │ - Multi-field coordinated       │
+              │ - Audit disable         │ - Targeted patient selection    │
+              │                         │ - Subtle dose escalation        │
+              │ Response: Hours         │ Response: Minutes               │
+              └─────────────────────────┴─────────────────────────────────┘
+
+Low Clinical  ┌─────────────────────────┬─────────────────────────────────┐
+Impact        │ Severity: 0.5-1.5       │ Severity: 1.8-2.3               │
+              │ (Accidental errors)     │ (Sophisticated accidents)       │
+              │                         │                                 │
+              │ Not applicable for      │ Not applicable for              │
+              │ malicious actors        │ malicious actors                │
+              │ (intent → ↑ severity)   │ (intent → ↑ severity)           │
+              └─────────────────────────┴─────────────────────────────────┘
+```
+
+**Key Insight**: The combination of **high clinical impact** + **high evasion sophistication** results in **maximum severity (3.0)**, requiring the most urgent response.
+
+---
+
+### Severity Escalation Due to Malicious Intent
+
+**Example**: Consider MLC aperture shift
+
+| Scenario | Severity | Rationale |
+|----------|----------|-----------|
+| **Accidental**: Planning software bug causes 1mm systematic shift | 1.8 | High severity, but detectable via portal imaging |
+| **Malicious**: Attacker deliberately shifts aperture 3mm to avoid target | 3.0 | **Critical**: Deliberate harm + designed to appear normal |
+
+**Difference**: Same technical failure, but malicious intent:
+- ✓ Systematic across all fields (coordinated)
+- ✓ Carefully chosen magnitude (evades tolerance checks)
+- ✓ Targets vulnerable patients (selective)
+- ✓ May manipulate audit trail (cover tracks)
+
+**Result**: Severity escalated from 1.8 → 3.0 due to malicious factors
+
+---
+
+### Response Time Requirements for Malicious Failures
+
+| Severity Range | Response Time | Actions Required |
+|----------------|--------------|------------------|
+| **2.5-2.6** | 30-60 min | • Physicist review<br>• Enhanced QA next fraction<br>• Forensic investigation initiated |
+| **2.7-2.8** | 15-30 min | • Same as above<br>• Incident commander assigned<br>• Security team notified |
+| **2.9-3.0** | **IMMEDIATE** (< 15 min) | • **Treatment halt for all affected patients**<br>• **Emergency physicist review**<br>• **Incident command activated**<br>• **Law enforcement notified**<br>• **Regulatory reporting (within hours)**<br>• **Forensic data preservation** |
+
+---
+
+### Legal and Regulatory Considerations
+
+#### Criminal Liability
+
+Malicious modification of radiotherapy data may constitute:
+- **Assault with intent to injure** (if patient harmed)
+- **Attempted murder** (if intent to kill)
+- **Computer fraud and abuse** (unauthorized database access)
+- **HIPAA violations** (if patient data accessed)
+
+**Severity 3.0 failures should trigger law enforcement notification.**
+
+#### Regulatory Reporting
+
+In the United States:
+- **FDA**: Medical device adverse event reporting (MedWatch)
+- **State radiation control program**: Immediate notification
+- **Joint Commission**: Sentinel event reporting
+- **NRC**: If radioactive materials involved
+
+**Timeline**: Severity 3.0 failures require regulatory notification within **24 hours**.
+
+---
+
+### Training the EBM with Malicious Intent
+
+#### Challenge: Malicious Failures are Rare
+
+- **Accidental errors**: Common, plentiful training data
+- **Malicious attacks**: Rare (hopefully zero in real data)
+
+**Solution**: Use MCP server to generate synthetic malicious examples
+
+#### Severity-Balanced Training
+
+Ensure EBM learns the full severity spectrum:
+
+```python
+# Training data distribution
+severity_distribution = {
+    "normal (0.0-0.4)": 1000,      # 50%
+    "low (0.5-0.8)": 300,          # 15%
+    "medium (1.0-1.5)": 300,       # 15%
+    "high (1.8-2.3)": 200,         # 10%
+    "critical_accidental (2.5)": 100,  # 5%
+    "critical_malicious (2.7-3.0)": 100  # 5% - synthetic via MCP
+}
+```
+
+**Key**: Even though real malicious attacks are rare, EBM must learn to recognize them → Use MCP server to generate realistic malicious examples
+
+---
+
+### Confidence Scoring for Malicious Detection
+
+Not all high-energy detections are malicious. Use confidence scoring:
+
+```python
+def assess_malicious_probability(features, energy, multi_modal_data):
+    """Estimate probability that high energy is malicious vs accidental."""
+
+    confidence_factors = {}
+
+    # 1. Multiple independent anomalies (suspicious)
+    if count_anomaly_types(features) >= 3:
+        confidence_factors['multiple_anomalies'] = 0.8
+
+    # 2. Statistical signature (designed evasion)
+    if detect_outlier_avoidance(features):
+        confidence_factors['statistical_evasion'] = 0.7
+
+    # 3. Temporal patterns (selective attacks)
+    if detect_temporal_clustering(features):
+        confidence_factors['temporal_pattern'] = 0.6
+
+    # 4. Audit trail anomalies
+    if detect_audit_manipulation(features):
+        confidence_factors['audit_issues'] = 0.9
+
+    # 5. Cross-patient patterns
+    if detect_demographic_bias(features):
+        confidence_factors['targeting'] = 0.9
+
+    # Combine factors (Bayesian update)
+    malicious_probability = bayesian_combine(confidence_factors)
+
+    return {
+        'energy': energy,
+        'malicious_probability': malicious_probability,
+        'confidence_factors': confidence_factors,
+        'recommendation': get_recommendation(energy, malicious_probability)
+    }
+```
+
+**Output Example**:
+```
+Energy: 2.8 (Critical)
+Malicious Probability: 0.85 (High confidence)
+Factors:
+  - Multiple anomalies detected (MLC + MU + position)
+  - Statistical evasion signature present
+  - Audit trail timestamp inconsistencies
+
+RECOMMENDATION: IMMEDIATE INCIDENT RESPONSE
+```
+
+---
+
 ## Severity Scale Summary Table
 
 | Category | Range | Count (example) | Response Time | Action |

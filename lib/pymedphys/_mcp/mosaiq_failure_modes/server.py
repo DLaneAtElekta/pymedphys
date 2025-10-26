@@ -259,6 +259,309 @@ FAILURE_MODES = {
             "Machine manufacturer MLC specifications",
         ],
     },
+    # =============================================================================
+    # MALICIOUS ACTOR FAILURE MODES
+    # =============================================================================
+    # These represent intentional sabotage attempts designed to cause patient harm
+    # while avoiding detection. All have critical severity (2.5-3.0).
+    "subtle_dose_escalation": {
+        "description": "Incrementally increase MU across multiple fractions to deliver excess dose while staying within daily tolerances",
+        "severity": {
+            "base": 2.9,  # Critical - deliberate patient harm
+            "variants": {
+                "linear_ramp": 2.8,  # Critical - gradual increase over treatment course
+                "random_walk": 2.9,  # Critical - random ±1-2% changes that accumulate
+                "fraction_selective": 3.0,  # Critical - only certain fractions modified
+                "field_distributed": 2.7,  # Critical - spread across multiple fields
+            },
+        },
+        "qa_checks": [
+            "Track cumulative MU across all fractions, compare to prescription",
+            "Statistical analysis of MU variance (detect systematic bias vs random)",
+            "Field-by-field longitudinal tracking (detect gradual drift)",
+            "Cross-reference with TRF files for delivered vs planned MU",
+            "Calculate total dose from delivered MU, verify against prescription",
+            "Detect outliers in MU per fraction time series",
+            "Compare current fraction MU to initial baseline (first 3 fractions)",
+        ],
+        "additional_data_needed": [
+            "Complete treatment history (all fractions) for statistical analysis",
+            "Prescription dose and fractionation schedule",
+            "Expected MU per fraction baseline (from plan)",
+            "TRF files for independent verification of delivered dose",
+            "Statistical models of normal MU variance per technique",
+            "Longitudinal trending data from previous patients with same protocol",
+        ],
+    },
+    "targeted_patient_selection": {
+        "description": "Selectively corrupt data for specific patients to avoid statistical detection across population",
+        "severity": {
+            "base": 3.0,  # Critical - targeted harm, difficult to detect
+            "variants": {
+                "demographic_targeting": 3.0,  # Critical - based on age, diagnosis, etc.
+                "random_sampling": 2.9,  # Critical - small % of patients to avoid pattern
+                "temporal_spacing": 2.9,  # Critical - long intervals between attacks
+                "site_specific": 2.8,  # Critical - only certain treatment sites
+            },
+        },
+        "qa_checks": [
+            "Per-patient anomaly detection (not just population statistics)",
+            "Longitudinal patient tracking from simulation through completion",
+            "Demographic analysis of anomalies (detect biased targeting)",
+            "Temporal clustering analysis (detect suspicious gaps or patterns)",
+            "Cross-patient comparison within same protocol/site",
+            "Audit all data modifications with user attribution",
+            "Flag patients with multiple independent anomalies (low probability)",
+        ],
+        "additional_data_needed": [
+            "Patient demographics and diagnosis codes for bias detection",
+            "Complete audit trail of database modifications with timestamps and users",
+            "Historical baseline of anomaly rates by demographic group",
+            "Treatment protocol and site information for stratified analysis",
+            "Multi-modal QA results (TRF, portal, phantom) for independent verification",
+            "Social network analysis of treating staff (detect insider threats)",
+        ],
+    },
+    "coordinated_multifield_attack": {
+        "description": "Distribute dose errors across multiple fields such that each field appears normal but cumulative dose is incorrect",
+        "severity": {
+            "base": 2.9,  # Critical - sophisticated, evades field-level QA
+            "variants": {
+                "compensatory_errors": 3.0,  # Critical - systematic opposite biases that sum
+                "geometric_shift": 2.9,  # Critical - shift dose away from target
+                "aperture_erosion": 2.8,  # Critical - subtle MLC changes across all fields
+                "hotspot_creation": 2.9,  # Critical - create overlap regions with excess dose
+            },
+        },
+        "qa_checks": [
+            "3D dose reconstruction from all fields (not individual field QA)",
+            "Gamma analysis of composite plan vs delivered (portal dosimetry)",
+            "DVH metrics for targets and OARs from delivered dose",
+            "Geometric analysis of field aperture overlaps and gaps",
+            "MLC aperture evolution tracking across fractions",
+            "Cumulative fluence maps (detect systematic shifts)",
+            "Independent dose calculation from delivered parameters",
+        ],
+        "additional_data_needed": [
+            "CT dataset for dose reconstruction",
+            "Structure set (targets, OARs) for DVH analysis",
+            "Treatment plan for baseline comparison",
+            "Portal dosimetry for all fields (independent measurement)",
+            "TRF files with MLC positions for all fractions",
+            "Gamma analysis tolerance levels (e.g., 3%/3mm)",
+            "3D dose calculation engine (e.g., Monte Carlo)",
+        ],
+    },
+    "time_delayed_corruption": {
+        "description": "Modify future fractions in database so errors manifest days/weeks after modification (audit trail obfuscation)",
+        "severity": {
+            "base": 2.8,  # Critical - difficult attribution, delayed detection
+            "variants": {
+                "scheduled_activation": 2.9,  # Critical - triggers on specific date/fraction
+                "conditional_execution": 2.8,  # Critical - only if certain conditions met
+                "database_trigger": 2.7,  # Critical - uses DB triggers for delayed execution
+                "gradual_onset": 2.8,  # Critical - slow manifestation over multiple fractions
+            },
+        },
+        "qa_checks": [
+            "Pre-treatment data integrity check immediately before each fraction",
+            "Version control and checksumming of treatment parameters",
+            "Detect unexpected data modifications (compare to previous fraction)",
+            "Audit trail temporal analysis (flag modifications of future fractions)",
+            "Database trigger and stored procedure audit",
+            "Diff analysis: planned vs current database state before delivery",
+            "Lock treatment parameters after approval (detect lock bypass)",
+        ],
+        "additional_data_needed": [
+            "Database audit logs with write operation timestamps",
+            "Baseline checksums/hashes of approved treatment parameters",
+            "Database trigger and stored procedure definitions",
+            "Treatment parameter version history (track all modifications)",
+            "User access logs (who modified what and when)",
+            "Pre-treatment verification workflow timestamps",
+            "Lock status and approval chain for treatment parameters",
+        ],
+    },
+    "statistical_camouflage": {
+        "description": "Introduce systematic bias that stays within normal statistical ranges but accumulates to harmful levels",
+        "severity": {
+            "base": 2.9,  # Critical - sophisticated, designed to evade statistical QA
+            "variants": {
+                "within_tolerance_bias": 2.9,  # Critical - always <2% but always positive
+                "noise_injection": 2.7,  # Critical - adds noise to hide systematic signal
+                "correlation_masking": 2.8,  # Critical - correlates errors with normal variance
+                "outlier_avoidance": 2.9,  # Critical - carefully avoids statistical outliers
+            },
+        },
+        "qa_checks": [
+            "Statistical process control (SPC) charts with CUSUM analysis",
+            "Detect systematic bias (t-test against zero mean)",
+            "Correlation analysis between errors and legitimate variance sources",
+            "Non-parametric trend tests (Mann-Kendall, Sen's slope)",
+            "Benford's law analysis (detect artificial data)",
+            "Run tests for randomness (detect non-random patterns)",
+            "Bayesian anomaly detection (update beliefs over time)",
+        ],
+        "additional_data_needed": [
+            "Historical baseline data (>100 patients) for statistical models",
+            "Known sources of legitimate variance (machine, technique, patient)",
+            "Statistical tolerance limits from clinical protocols",
+            "Time series data for trend analysis",
+            "Control group data (unmodified patients) for comparison",
+            "Multi-modal verification (TRF, portal, phantom) to break correlations",
+            "Machine QA data (detect correlated equipment issues)",
+        ],
+    },
+    "audit_trail_manipulation": {
+        "description": "Modify database audit tables, timestamps, or user attribution to hide malicious changes",
+        "severity": {
+            "base": 2.7,  # Critical - covers tracks, enables other attacks
+            "variants": {
+                "timestamp_forgery": 2.8,  # Critical - backdates malicious modifications
+                "user_impersonation": 2.9,  # Critical - attributes changes to legitimate users
+                "log_deletion": 3.0,  # Critical - removes evidence entirely
+                "audit_disable": 2.7,  # Critical - disables logging temporarily
+            },
+        },
+        "qa_checks": [
+            "External audit logging (write-once, append-only log off-database)",
+            "Database binary log analysis (transaction log forensics)",
+            "Timestamp consistency checks (cross-reference with network time)",
+            "User session analysis (detect impossible user activity patterns)",
+            "File system timestamps on database files (detect out-of-band modifications)",
+            "Audit table integrity checks (checksums, digital signatures)",
+            "Compare database state to external backups (detect retroactive changes)",
+        ],
+        "additional_data_needed": [
+            "Write-once external audit log (WORM storage, blockchain)",
+            "Database transaction logs (binary logs, redo logs)",
+            "Network time protocol (NTP) logs for timestamp validation",
+            "User authentication and session logs",
+            "Database file system metadata and backups",
+            "Cryptographic audit trail (digital signatures on critical records)",
+            "Immutable backup schedule (detect restoration attacks)",
+        ],
+    },
+    "field_aperture_manipulation": {
+        "description": "Subtly modify MLC apertures to shift dose away from target toward critical structures",
+        "severity": {
+            "base": 2.9,  # Critical - deliberate geometric miss
+            "variants": {
+                "systematic_shift": 3.0,  # Critical - all leaves shifted same direction
+                "margin_erosion": 2.9,  # Critical - reduce PTV margins
+                "oar_expansion": 2.8,  # Critical - move dose toward critical structures
+                "asymmetric_blur": 2.7,  # Critical - non-uniform aperture degradation
+            },
+        },
+        "qa_checks": [
+            "MLC aperture centroid tracking (detect systematic shifts)",
+            "Field size metrics (area, perimeter, equivalent square)",
+            "PTV margin analysis (calculate effective margin from aperture)",
+            "OAR proximity analysis (distance from aperture to critical structures)",
+            "Aperture shape analysis (detect asymmetric changes)",
+            "Leaf end position histograms (detect systematic bias)",
+            "Portal imaging analysis (compare to planned aperture)",
+        ],
+        "additional_data_needed": [
+            "Treatment plan DICOM RT Plan (baseline apertures)",
+            "Structure set with PTV and OAR contours",
+            "Portal images for geometric verification",
+            "MLC calibration and positional accuracy data",
+            "Expected PTV margins by treatment site",
+            "TRF files with delivered MLC positions",
+            "Beam's eye view (BEV) geometry from plan",
+        ],
+    },
+    "gradual_parameter_drift": {
+        "description": "Slowly modify treatment parameters over multiple fractions to create cumulative errors that evade daily QA",
+        "severity": {
+            "base": 2.8,  # Critical - long-term harm, difficult detection
+            "variants": {
+                "gantry_angle_drift": 2.7,  # Critical - gradual rotation errors
+                "isocenter_shift": 2.9,  # Critical - slow positional drift
+                "mu_creep": 2.8,  # Critical - gradual dose escalation
+                "mlc_drift": 2.7,  # Critical - slow aperture changes
+            },
+        },
+        "qa_checks": [
+            "Longitudinal parameter tracking (plot all parameters vs fraction)",
+            "Regression analysis to detect trends (linear, exponential fits)",
+            "Change point detection algorithms (identify when drift started)",
+            "Cumulative deviation analysis (sum of all deviations from baseline)",
+            "Velocity analysis (rate of change between fractions)",
+            "Kalman filtering for state estimation (predict expected values)",
+            "Compare to initial baseline (first 3 fractions after approval)",
+        ],
+        "additional_data_needed": [
+            "Complete treatment history (all fractions) for trend analysis",
+            "Initial approved baseline parameters",
+            "Expected parameter stability tolerances",
+            "TRF files for independent verification of all fractions",
+            "Statistical models of normal inter-fraction variance",
+            "Machine QA trends (separate equipment drift from malicious drift)",
+            "Environmental data (temperature, humidity) to account for physical drift",
+        ],
+    },
+    "selective_fraction_sabotage": {
+        "description": "Modify only specific fractions (e.g., every 5th fraction) to avoid detection while accumulating dose errors",
+        "severity": {
+            "base": 2.8,  # Critical - sparse attacks evade detection
+            "variants": {
+                "periodic_attacks": 2.7,  # Critical - regular intervals (every Nth)
+                "random_selection": 2.9,  # Critical - unpredictable fraction choice
+                "calendar_based": 2.8,  # Critical - specific days/times (weekend, night shift)
+                "staff_correlated": 2.8,  # Critical - only when certain staff on duty
+            },
+        },
+        "qa_checks": [
+            "Per-fraction anomaly scoring (flag individual fractions)",
+            "Frequency domain analysis (detect periodic patterns)",
+            "Temporal autocorrelation (detect non-random fraction selection)",
+            "Staff correlation analysis (detect insider threat patterns)",
+            "Calendar analysis (detect temporal biases)",
+            "Poisson process modeling (detect non-random event timing)",
+            "Cumulative dose tracking (verify total dose regardless of fraction pattern)",
+        ],
+        "additional_data_needed": [
+            "Per-fraction QA data (TRF, portal dosimetry) for all fractions",
+            "Staff schedules and shift assignments",
+            "Calendar data (weekday, time of day, holidays)",
+            "Facility access logs (detect unauthorized access patterns)",
+            "Complete audit trail of database modifications",
+            "Multi-modal verification for every fraction (not just periodic QA)",
+            "Statistical baseline of normal fraction-to-fraction variance",
+        ],
+    },
+    "collimator_jaw_manipulation": {
+        "description": "Modify collimator jaw positions to create field size errors or dose gradient shifts",
+        "severity": {
+            "base": 2.6,  # Critical - affects entire field dose distribution
+            "variants": {
+                "jaw_asymmetry": 2.7,  # Critical - unequal jaw positions
+                "field_size_reduction": 2.8,  # Critical - reduce field to underdose target
+                "field_size_expansion": 2.5,  # Critical - overdose surrounding tissue
+                "gradient_shift": 2.6,  # Critical - change dose fall-off characteristics
+            },
+        },
+        "qa_checks": [
+            "Verify collimator X1, X2, Y1, Y2 jaw positions match plan",
+            "Field size calculation from jaw positions (verify against prescription)",
+            "Jaw symmetry analysis (detect asymmetric modifications)",
+            "Comparison with MLC aperture (jaws should exceed MLC aperture)",
+            "Portal imaging field size verification",
+            "Dose profile analysis (detect gradient changes)",
+            "TRF file verification of delivered jaw positions",
+        ],
+        "additional_data_needed": [
+            "Treatment plan jaw positions (DICOM RT Plan)",
+            "Expected field sizes by beam",
+            "Portal images for geometric verification",
+            "TRF files with delivered jaw positions",
+            "Jaw position tolerances from clinical protocol",
+            "Beam profile measurements (for gradient verification)",
+            "Collimator calibration data (jaw position accuracy)",
+        ],
+    },
 }
 
 
