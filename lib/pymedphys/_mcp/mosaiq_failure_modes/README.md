@@ -267,11 +267,19 @@ This will:
 - **Meterset Features** (8): MU consistency, range validation
 - **Foreign Key Features** (6): Referential integrity, NULL detection
 
-**Adversarial Training**:
-- Uses failure modes as adversarial examples
-- Contrastive energy loss function
-- Balanced dataset with equal normal/anomaly examples
-- Robust to unseen corruption patterns
+**Severity-Weighted Training**:
+- **Continuous severity scores** (0=normal, 0.5-3.0=anomaly severity)
+- **Risk stratification**: Low (0.5-0.8), Medium (1.0-1.5), High (1.8-2.3), Critical (2.5-3.0)
+- **MSE loss function**: Model learns to output energy matching severity
+- **Clinical prioritization**: Critical failures trigger immediate alerts, low severity logged for trending
+
+**Severity Examples**:
+- Critical (2.5-3.0): Wrong patient ID, extreme positioning offsets, negative MU
+- High (1.8-2.3): Missing control points, MLC out of range, dose errors
+- Medium (1.0-1.5): Duplicate treatments, timestamp inconsistencies
+- Low (0.5-0.8): Invalid angles (safety interlocks prevent delivery), parsing errors
+
+See [SEVERITY_SCALE.md](./SEVERITY_SCALE.md) for complete severity documentation.
 
 ### Documentation
 

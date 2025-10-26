@@ -30,6 +30,7 @@ from pymedphys._mcp.mosaiq_failure_modes.ebm_training import (
     AdversarialTrainer,
     create_balanced_dataset,
 )
+from pymedphys._mcp.mosaiq_failure_modes.severity import get_severity
 from pymedphys._mosaiq import connect
 
 # Configure logging
@@ -104,7 +105,7 @@ def generate_adversarial_data(
     database: str,
     n_samples: int,
     feature_names: list[str],
-) -> tuple[np.ndarray, np.ndarray, list[int]]:
+) -> tuple[np.ndarray, np.ndarray, list[tuple[int, str, str, float]]]:
     """Generate adversarial examples using failure mode corruptions.
 
     Args:
@@ -114,7 +115,10 @@ def generate_adversarial_data(
         feature_names: List of feature names to extract
 
     Returns:
-        Tuple of (features, labels, corrupted_ttx_ids)
+        Tuple of (features, severity_scores, failure_mode_records)
+        - features: Feature matrix
+        - severity_scores: Severity score for each example
+        - failure_mode_records: List of (ttx_id, failure_mode, variant, severity)
     """
     logger.info(f"Connecting to test database: {hostname}/{database}")
 
@@ -137,37 +141,70 @@ def generate_adversarial_data(
         candidates = cursor.fetchall()
         logger.info(f"Found {len(candidates)} candidates")
 
-        # Define failure modes to apply (distribute evenly)
+        # Define failure modes to apply with their severity scores
+        # Each tuple: (failure_mode, variant, corruption_func, severity)
         failure_modes = [
             # MLC corruptions
-            ("mlc_random", lambda ttx, fld, off: corrupt_mlc_random(cursor, fld)),
-            ("mlc_out_of_range", lambda ttx, fld, off: corrupt_mlc_out_of_range(cursor, fld)),
+            (
+                "corrupt_mlc_data",
+                "random_bytes",
+                lambda ttx, fld, off: corrupt_mlc_random(cursor, fld),
+                get_severity("corrupt_mlc_data", "random_bytes"),
+            ),
+            (
+                "corrupt_mlc_data",
+                "out_of_range",
+                lambda ttx, fld, off: corrupt_mlc_out_of_range(cursor, fld),
+                get_severity("corrupt_mlc_data", "out_of_range"),
+            ),
             # Angle corruptions
-            ("angle_invalid", lambda ttx, fld, off: corrupt_angles(cursor, fld, 400.0)),
+            (
+                "invalid_angles",
+                "gantry",
+                lambda ttx, fld, off: corrupt_angles(cursor, fld, 400.0),
+                get_severity("invalid_angles", "gantry"),
+            ),
             # Control point corruptions
-            ("cp_gaps", lambda ttx, fld, off: delete_control_points(cursor, fld, [1, 3])),
+            (
+                "missing_control_points",
+                "single_gap",
+                lambda ttx, fld, off: delete_control_points(cursor, fld, [1, 3]),
+                get_severity("missing_control_points", "single_gap"),
+            ),
             # Timestamp corruptions
             (
-                "timestamp_invalid",
+                "timestamp_inconsistencies",
+                "edit_before_create",
                 lambda ttx, fld, off: corrupt_timestamp(cursor, ttx, "edit_before_create"),
+                get_severity("timestamp_inconsistencies", "edit_before_create"),
             ),
-            # Offset corruptions
+            # Offset corruptions (critical severity)
             (
-                "offset_extreme",
-                lambda ttx, fld, off: corrupt_offset(cursor, off, 999.9)
-                if off
-                else None,
+                "invalid_offset_data",
+                "extreme_values",
+                lambda ttx, fld, off: corrupt_offset(cursor, off, 999.9) if off else None,
+                get_severity("invalid_offset_data", "extreme_values"),
             ),
-            # Meterset corruptions
-            ("meterset_negative", lambda ttx, fld, off: corrupt_meterset(cursor, fld, -100.0)),
-            # FK corruptions
-            ("orphaned", lambda ttx, fld, off: corrupt_foreign_key(cursor, ttx, 999999)),
+            # Meterset corruptions (critical severity)
+            (
+                "meterset_inconsistency",
+                "negative_meterset",
+                lambda ttx, fld, off: corrupt_meterset(cursor, fld, -100.0),
+                get_severity("meterset_inconsistency", "negative_meterset"),
+            ),
+            # FK corruptions (critical severity)
+            (
+                "orphaned_records",
+                "patient_id",
+                lambda ttx, fld, off: corrupt_foreign_key(cursor, ttx, 999999),
+                get_severity("orphaned_records", "patient_id"),
+            ),
         ]
 
-        corrupted_ttx_ids = []
+        failure_mode_records = []  # Store (ttx_id, failure_mode, variant, severity)
         records_per_mode = len(candidates) // len(failure_modes)
 
-        for i, (mode_name, corruption_func) in enumerate(failure_modes):
+        for i, (failure_mode, variant, corruption_func, severity) in enumerate(failure_modes):
             start_idx = i * records_per_mode
             end_idx = (
                 start_idx + records_per_mode
@@ -176,38 +213,48 @@ def generate_adversarial_data(
             )
 
             logger.info(
-                f"Applying {mode_name} to records {start_idx}-{end_idx} "
-                f"({end_idx - start_idx} records)"
+                f"Applying {failure_mode}/{variant} (severity={severity:.1f}) "
+                f"to records {start_idx}-{end_idx} ({end_idx - start_idx} records)"
             )
 
             for ttx_id, fld_id, off_id in candidates[start_idx:end_idx]:
                 try:
                     corruption_func(ttx_id, fld_id, off_id)
-                    corrupted_ttx_ids.append(ttx_id)
+                    failure_mode_records.append((ttx_id, failure_mode, variant, severity))
                 except Exception as e:
-                    logger.warning(f"Failed to corrupt TTX_ID {ttx_id} with {mode_name}: {e}")
+                    logger.warning(
+                        f"Failed to corrupt TTX_ID {ttx_id} with {failure_mode}/{variant}: {e}"
+                    )
 
-        logger.info(f"Successfully corrupted {len(corrupted_ttx_ids)} records")
+        logger.info(f"Successfully corrupted {len(failure_mode_records)} records")
 
         # Extract features from corrupted records
         logger.info("Extracting features from corrupted records")
         features_list = []
-        for i, ttx_id in enumerate(corrupted_ttx_ids):
+        severity_list = []
+        valid_records = []
+
+        for i, (ttx_id, failure_mode, variant, severity) in enumerate(failure_mode_records):
             if i % 50 == 0:
-                logger.info(f"Processing {i}/{len(corrupted_ttx_ids)}...")
+                logger.info(f"Processing {i}/{len(failure_mode_records)}...")
 
             try:
                 features = extract_all_features(cursor, ttx_id)
                 feature_vec = create_feature_vector(features, feature_names)
                 features_list.append(feature_vec)
+                severity_list.append(severity)
+                valid_records.append((ttx_id, failure_mode, variant, severity))
             except Exception as e:
                 logger.warning(f"Failed to extract features for corrupted TTX_ID {ttx_id}: {e}")
 
         features = np.array(features_list)
-        labels = np.ones(len(features))
+        severities = np.array(severity_list)
 
         logger.info(f"Successfully extracted {len(features)} adversarial examples")
-        return features, labels, corrupted_ttx_ids
+        logger.info(f"  Severity range: {severities.min():.2f} - {severities.max():.2f}")
+        logger.info(f"  Mean severity: {severities.mean():.2f}")
+
+        return features, severities, valid_records
 
 
 # Corruption helper functions
@@ -328,35 +375,47 @@ def main():
 
     # Step 2: Generate adversarial examples
     logger.info("\n[2/6] Generating adversarial examples in test database")
-    adv_features, adv_labels, corrupted_ids = generate_adversarial_data(
+    adv_features, adv_severities, failure_mode_records = generate_adversarial_data(
         args.test_host, args.test_database, args.n_adversarial, STANDARD_FEATURE_NAMES
     )
 
-    # Save corrupted IDs for reference
-    corrupted_ids_file = args.output_dir / "corrupted_ttx_ids.txt"
-    with open(corrupted_ids_file, "w") as f:
-        for ttx_id in corrupted_ids:
-            f.write(f"{ttx_id}\n")
-    logger.info(f"Saved corrupted TTX_IDs to {corrupted_ids_file}")
+    # Save corrupted records for reference
+    corrupted_records_file = args.output_dir / "failure_mode_records.csv"
+    with open(corrupted_records_file, "w") as f:
+        f.write("TTX_ID,FailureMode,Variant,Severity\n")
+        for ttx_id, failure_mode, variant, severity in failure_mode_records:
+            f.write(f"{ttx_id},{failure_mode},{variant},{severity}\n")
+    logger.info(f"Saved failure mode records to {corrupted_records_file}")
 
     # Step 3: Create balanced dataset
     logger.info("\n[3/6] Creating balanced dataset")
-    all_features, all_labels = create_balanced_dataset(
-        normal_features, normal_labels, adv_features, adv_labels, balance_ratio=1.0
+    all_features, all_severities = create_balanced_dataset(
+        normal_features, normal_labels, adv_features, adv_severities, balance_ratio=1.0
     )
 
     # Step 4: Split train/test
     logger.info("\n[4/6] Splitting train/test sets")
-    train_features, test_features, train_labels, test_labels = train_test_split(
-        all_features, all_labels, test_size=0.2, stratify=all_labels, random_state=42
+
+    # For stratification with severity scores, bin them into categories
+    severity_bins = np.digitize(all_severities, bins=[0.4, 1.0, 1.8, 2.5])
+
+    train_features, test_features, train_severities, test_severities = train_test_split(
+        all_features, all_severities, test_size=0.2, stratify=severity_bins, random_state=42
     )
 
     logger.info(f"Training set: {len(train_features)} examples")
-    logger.info(f"  Normal: {(train_labels == 0).sum()}")
-    logger.info(f"  Anomaly: {(train_labels == 1).sum()}")
+    logger.info(f"  Normal (severity<0.4): {(train_severities < 0.4).sum()}")
+    logger.info(f"  Low (0.4-1.0): {((train_severities >= 0.4) & (train_severities < 1.0)).sum()}")
+    logger.info(f"  Medium (1.0-1.8): {((train_severities >= 1.0) & (train_severities < 1.8)).sum()}")
+    logger.info(f"  High (1.8-2.5): {((train_severities >= 1.8) & (train_severities < 2.5)).sum()}")
+    logger.info(f"  Critical (>=2.5): {(train_severities >= 2.5).sum()}")
+
     logger.info(f"Test set: {len(test_features)} examples")
-    logger.info(f"  Normal: {(test_labels == 0).sum()}")
-    logger.info(f"  Anomaly: {(test_labels == 1).sum()}")
+    logger.info(f"  Normal (severity<0.4): {(test_severities < 0.4).sum()}")
+    logger.info(f"  Low (0.4-1.0): {((test_severities >= 0.4) & (test_severities < 1.0)).sum()}")
+    logger.info(f"  Medium (1.0-1.8): {((test_severities >= 1.0) & (test_severities < 1.8)).sum()}")
+    logger.info(f"  High (1.8-2.5): {((test_severities >= 1.8) & (test_severities < 2.5)).sum()}")
+    logger.info(f"  Critical (>=2.5): {(test_severities >= 2.5).sum()}")
 
     # Step 5: Train EBM
     logger.info("\n[5/6] Training EBM")
@@ -366,12 +425,13 @@ def main():
 
     history = trainer.train(
         train_features,
-        train_labels,
+        train_severities,
         test_features,
-        test_labels,
+        test_severities,
         n_epochs=args.n_epochs,
         batch_size=args.batch_size,
         margin=args.margin,
+        use_severity=True,  # Use severity-weighted training
     )
 
     # Step 6: Final evaluation

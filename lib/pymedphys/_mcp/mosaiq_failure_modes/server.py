@@ -27,9 +27,25 @@ app = Server("mosaiq-failure-modes")
 # FAILURE MODE DEFINITIONS
 # =============================================================================
 
+# Severity scale for EBM training:
+# 0.0 = Normal data (low energy)
+# 0.5-0.8 = Low severity (data quality issues, non-critical)
+# 1.0-1.5 = Medium severity (data integrity, workflow issues)
+# 1.8-2.3 = High severity (dose delivery errors, treatment integrity)
+# 2.5-3.0 = Critical severity (patient safety risk, wrong patient/position/dose)
+
 FAILURE_MODES = {
     "corrupt_mlc_data": {
         "description": "Corrupt MLC binary data (A_Leaf_Set/B_Leaf_Set) in TxFieldPoint",
+        "severity": {
+            "base": 1.5,  # High - affects dose delivery
+            "variants": {
+                "odd_bytes": 0.6,  # Low - parsing issue, may not affect treatment
+                "out_of_range": 2.0,  # High - dose calculation errors
+                "negative_gap": 2.2,  # High - physical impossibility, delivery fails
+                "random_bytes": 1.5,  # Medium-High - unpredictable effects
+            },
+        },
         "qa_checks": [
             "Verify MLC byte array length is even (2 bytes per leaf)",
             "Verify MLC positions are within physical limits (-20cm to +20cm typical)",
@@ -44,6 +60,14 @@ FAILURE_MODES = {
     },
     "invalid_angles": {
         "description": "Set gantry/collimator angles outside valid range (0-360°)",
+        "severity": {
+            "base": 0.7,  # Low - likely data entry error, delivery has safety constraints
+            "variants": {
+                "gantry": 0.7,
+                "collimator": 0.6,
+                "both": 0.8,
+            },
+        },
         "qa_checks": [
             "Verify Gantry_Ang is within 0-360° range",
             "Verify Coll_Ang is within 0-360° range",
@@ -58,6 +82,13 @@ FAILURE_MODES = {
     },
     "duplicate_treatments": {
         "description": "Create duplicate TrackTreatment entries with conflicting data",
+        "severity": {
+            "base": 1.2,  # Medium - billing/record issues, treatment integrity unclear
+            "variants": {
+                "same_field": 1.0,  # Medium-Low - likely duplicate recording
+                "different_field": 1.5,  # Medium-High - conflicting treatment records
+            },
+        },
         "qa_checks": [
             "Check for multiple TrackTreatment entries within time buffer",
             "Verify no conflicting FLD_ID for same patient/machine/time",
@@ -72,6 +103,14 @@ FAILURE_MODES = {
     },
     "missing_control_points": {
         "description": "Delete control points from TxFieldPoint to create gaps",
+        "severity": {
+            "base": 2.0,  # High - incomplete dose delivery data
+            "variants": {
+                "single_gap": 1.8,  # High - one missing segment
+                "multiple_gaps": 2.2,  # High - severe data loss
+                "all_deleted": 2.5,  # Critical - complete data loss
+            },
+        },
         "qa_checks": [
             "Verify control point indices are sequential (0, 1, 2, ...)",
             "Verify total control points match expected for field type",
@@ -86,6 +125,15 @@ FAILURE_MODES = {
     },
     "null_required_fields": {
         "description": "Set critical fields to NULL (Pat_ID1, FLD_ID, timestamps)",
+        "severity": {
+            "base": 1.8,  # High - data corruption, queries fail
+            "variants": {
+                "pat_id": 2.7,  # Critical - patient identification lost
+                "fld_id": 2.3,  # High-Critical - treatment plan reference lost
+                "timestamp": 1.2,  # Medium - temporal reference lost
+                "other": 1.0,  # Medium-Low - data quality issue
+            },
+        },
         "qa_checks": [
             "Verify all foreign keys are non-NULL",
             "Verify all timestamp fields are non-NULL",
@@ -100,6 +148,14 @@ FAILURE_MODES = {
     },
     "timestamp_inconsistencies": {
         "description": "Create invalid timestamp relationships (Edit_DtTm < Create_DtTm)",
+        "severity": {
+            "base": 1.0,  # Medium - record keeping issue
+            "variants": {
+                "edit_before_create": 1.2,  # Medium - logical impossibility
+                "future_timestamp": 1.0,  # Medium - clock sync issue
+                "negative_duration": 1.3,  # Medium - data integrity issue
+            },
+        },
         "qa_checks": [
             "Verify Edit_DtTm >= Create_DtTm for all TrackTreatment records",
             "Check for future timestamps (beyond current datetime)",
@@ -114,6 +170,14 @@ FAILURE_MODES = {
     },
     "orphaned_records": {
         "description": "Create records with invalid foreign key references",
+        "severity": {
+            "base": 2.6,  # Critical - patient safety risk (wrong patient association)
+            "variants": {
+                "patient_id": 2.8,  # Critical - treatment may be for wrong patient
+                "field_id": 2.3,  # High-Critical - treatment plan reference invalid
+                "site_id": 2.5,  # Critical - treatment site reference invalid
+            },
+        },
         "qa_checks": [
             "Verify all Pat_ID1 references exist in Patient/Ident tables",
             "Verify all FLD_ID references exist in TxField table",
@@ -128,6 +192,15 @@ FAILURE_MODES = {
     },
     "invalid_offset_data": {
         "description": "Corrupt patient positioning offset values (third-party writes)",
+        "severity": {
+            "base": 2.4,  # High-Critical - wrong treatment position
+            "variants": {
+                "extreme_values": 2.7,  # Critical - patient safety (geometric miss)
+                "invalid_type": 1.0,  # Medium - data quality issue
+                "invalid_state": 0.9,  # Medium-Low - workflow tracking issue
+                "future_study_time": 1.1,  # Medium - temporal tracking issue
+            },
+        },
         "qa_checks": [
             "Verify offset magnitudes are within acceptable range (±5cm typical)",
             "Check Offset_Type is valid enumeration (2=Localization, 3=Portal, 4=ThirdParty)",
@@ -143,6 +216,14 @@ FAILURE_MODES = {
     },
     "meterset_inconsistency": {
         "description": "Mismatch between planned meterset and delivered MU",
+        "severity": {
+            "base": 2.3,  # High-Critical - dose delivery error
+            "variants": {
+                "negative_meterset": 2.8,  # Critical - physically impossible, safety interlock
+                "extreme_value": 2.6,  # Critical - wrong dose delivered
+                "mismatch_with_cp": 1.5,  # Medium-High - documentation inconsistency
+            },
+        },
         "qa_checks": [
             "Verify TxField.Meterset matches sum of control point MU",
             "Check for negative meterset values",
@@ -158,6 +239,14 @@ FAILURE_MODES = {
     },
     "mlc_leaf_count_mismatch": {
         "description": "Inconsistent number of MLC leaves across control points",
+        "severity": {
+            "base": 1.9,  # High - dose calculation errors
+            "variants": {
+                "intra_field": 2.1,  # High - inconsistent within same field
+                "vs_machine": 2.0,  # High - doesn't match machine config
+                "vs_plan": 1.8,  # High - doesn't match treatment plan
+            },
+        },
         "qa_checks": [
             "Verify all control points have same leaf count",
             "Verify leaf count matches machine specification",
