@@ -817,6 +817,176 @@ async def list_tools() -> list[Tool]:
             description="List all available failure modes with descriptions and QA requirements",
             inputSchema={"type": "object", "properties": {}},
         ),
+        # Malicious Actor Failure Modes (Severity 2.5-3.0)
+        Tool(
+            name="subtle_dose_escalation",
+            description=FAILURE_MODES["subtle_dose_escalation"]["description"],
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "hostname": {"type": "string"},
+                    "database": {"type": "string", "default": "MOSAIQ"},
+                    "pat_id": {"type": "string", "description": "Patient ID"},
+                    "escalation_type": {
+                        "type": "string",
+                        "enum": ["linear_ramp", "random_walk", "fraction_selective", "field_distributed"],
+                        "description": "Type of dose escalation pattern",
+                    },
+                    "escalation_percent": {
+                        "type": "number",
+                        "description": "Percent increase per fraction (e.g., 1.5)",
+                        "default": 1.5,
+                    },
+                    "num_fractions": {
+                        "type": "integer",
+                        "description": "Number of fractions to escalate",
+                        "default": 30,
+                    },
+                },
+                "required": ["hostname", "pat_id", "escalation_type"],
+            },
+        ),
+        Tool(
+            name="coordinated_multifield_attack",
+            description=FAILURE_MODES["coordinated_multifield_attack"]["description"],
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "hostname": {"type": "string"},
+                    "database": {"type": "string", "default": "MOSAIQ"},
+                    "pat_id": {"type": "string"},
+                    "attack_type": {
+                        "type": "string",
+                        "enum": ["compensatory_errors", "geometric_shift", "aperture_erosion", "hotspot_creation"],
+                    },
+                    "shift_mm": {
+                        "type": "number",
+                        "description": "Shift magnitude in mm (for geometric_shift)",
+                        "default": 3.0,
+                    },
+                },
+                "required": ["hostname", "pat_id", "attack_type"],
+            },
+        ),
+        Tool(
+            name="field_aperture_manipulation",
+            description=FAILURE_MODES["field_aperture_manipulation"]["description"],
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "hostname": {"type": "string"},
+                    "database": {"type": "string", "default": "MOSAIQ"},
+                    "fld_id": {"type": "integer"},
+                    "manipulation_type": {
+                        "type": "string",
+                        "enum": ["systematic_shift", "margin_erosion", "oar_expansion", "asymmetric_blur"],
+                    },
+                    "shift_mm": {
+                        "type": "number",
+                        "description": "MLC shift in mm",
+                        "default": 3.0,
+                    },
+                },
+                "required": ["hostname", "fld_id", "manipulation_type"],
+            },
+        ),
+        Tool(
+            name="gradual_parameter_drift",
+            description=FAILURE_MODES["gradual_parameter_drift"]["description"],
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "hostname": {"type": "string"},
+                    "database": {"type": "string", "default": "MOSAIQ"},
+                    "pat_id": {"type": "string"},
+                    "drift_type": {
+                        "type": "string",
+                        "enum": ["gantry_angle_drift", "isocenter_shift", "mu_creep", "mlc_drift"],
+                    },
+                    "drift_rate": {
+                        "type": "number",
+                        "description": "Drift per fraction (degrees for angles, mm for position, % for MU)",
+                        "default": 0.5,
+                    },
+                    "num_fractions": {"type": "integer", "default": 20},
+                },
+                "required": ["hostname", "pat_id", "drift_type"],
+            },
+        ),
+        Tool(
+            name="collimator_jaw_manipulation",
+            description=FAILURE_MODES["collimator_jaw_manipulation"]["description"],
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "hostname": {"type": "string"},
+                    "database": {"type": "string", "default": "MOSAIQ"},
+                    "fld_id": {"type": "integer"},
+                    "manipulation_type": {
+                        "type": "string",
+                        "enum": ["jaw_asymmetry", "field_size_reduction", "field_size_expansion", "gradient_shift"],
+                    },
+                    "adjustment_cm": {
+                        "type": "number",
+                        "description": "Jaw position adjustment in cm",
+                        "default": 0.5,
+                    },
+                },
+                "required": ["hostname", "fld_id", "manipulation_type"],
+            },
+        ),
+        Tool(
+            name="time_delayed_corruption",
+            description=FAILURE_MODES["time_delayed_corruption"]["description"],
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "hostname": {"type": "string"},
+                    "database": {"type": "string", "default": "MOSAIQ"},
+                    "target_date": {
+                        "type": "string",
+                        "description": "ISO format date when corruption should manifest (YYYY-MM-DD)",
+                    },
+                    "corruption_type": {
+                        "type": "string",
+                        "enum": ["scheduled_activation", "conditional_execution", "gradual_onset"],
+                    },
+                    "target_fld_ids": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Field IDs to corrupt",
+                    },
+                },
+                "required": ["hostname", "target_date", "corruption_type", "target_fld_ids"],
+            },
+        ),
+        Tool(
+            name="statistical_camouflage",
+            description=FAILURE_MODES["statistical_camouflage"]["description"],
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "hostname": {"type": "string"},
+                    "database": {"type": "string", "default": "MOSAIQ"},
+                    "pat_id": {"type": "string"},
+                    "camouflage_type": {
+                        "type": "string",
+                        "enum": ["within_tolerance_bias", "noise_injection", "correlation_masking", "outlier_avoidance"],
+                    },
+                    "bias_percent": {
+                        "type": "number",
+                        "description": "Systematic bias in % (stays within tolerance)",
+                        "default": 1.5,
+                    },
+                    "noise_std_percent": {
+                        "type": "number",
+                        "description": "Random noise std dev in %",
+                        "default": 1.0,
+                    },
+                },
+                "required": ["hostname", "pat_id", "camouflage_type"],
+            },
+        ),
     ]
 
 
@@ -1080,6 +1250,396 @@ Note: Requires specifying which record to corrupt. Use with caution.
         result = execute_update(
             hostname, database, query, {"fld_id": fld_id} if "params" not in locals() else params
         )
+        return [TextContent(type="text", text=result)]
+
+    # =========================================================================
+    # MALICIOUS ACTOR FAILURE MODES
+    # =========================================================================
+
+    elif name == "subtle_dose_escalation":
+        hostname = arguments["hostname"]
+        database = arguments.get("database", "MOSAIQ")
+        pat_id = arguments["pat_id"]
+        escalation_type = arguments["escalation_type"]
+        escalation_percent = arguments.get("escalation_percent", 1.5)
+        num_fractions = arguments.get("num_fractions", 30)
+
+        result = f"""
+Malicious Failure Mode: Subtle Dose Escalation (Severity 2.9)
+
+Attack Configuration:
+- Patient: {pat_id}
+- Type: {escalation_type}
+- Escalation: {escalation_percent}% per fraction
+- Duration: {num_fractions} fractions
+- Total cumulative overdose: ~{escalation_percent * num_fractions:.1f}%
+
+SQL Template (TEST DATABASE ONLY - REQUIRES CONFIRMATION):
+
+-- WARNING: This simulates INTENTIONAL SABOTAGE for adversarial training
+-- CRITICAL: Verify you are on a TEST database before proceeding
+
+-- Step 1: Get all fields for patient
+SELECT FLD_ID, Field_Name, Meterset
+FROM TxField
+WHERE Pat_ID1 = '{pat_id}'
+
+-- Step 2: Apply escalation pattern
+"""
+
+        if escalation_type == "linear_ramp":
+            result += f"""
+-- Linear ramp: Increase MU by {escalation_percent}% each fraction
+DECLARE @fraction INT = 1
+WHILE @fraction <= {num_fractions}
+BEGIN
+    UPDATE TxField
+    SET Meterset = Meterset * (1.0 + {escalation_percent / 100} * @fraction)
+    WHERE Pat_ID1 = '{pat_id}'
+
+    SET @fraction = @fraction + 1
+END
+"""
+        elif escalation_type == "random_walk":
+            result += f"""
+-- Random walk: Add noise but with positive bias
+-- Each fraction: Meterset * (1.0 + N({escalation_percent}%, 1.0%))
+-- Result: Cumulative positive drift evading daily checks
+
+-- This requires procedural code - see example_training.py for implementation
+"""
+
+        result += """
+Detection Strategy:
+1. CUSUM analysis (detect cumulative drift)
+2. Mann-Kendall trend test (detect monotonic increase)
+3. Compare cumulative MU to prescription
+
+Severity: 2.9 (Critical - sophisticated evasion)
+Response Time: <15 minutes if detected
+"""
+        return [TextContent(type="text", text=result)]
+
+    elif name == "coordinated_multifield_attack":
+        hostname = arguments["hostname"]
+        database = arguments.get("database", "MOSAIQ")
+        pat_id = arguments["pat_id"]
+        attack_type = arguments["attack_type"]
+        shift_mm = arguments.get("shift_mm", 3.0)
+
+        result = f"""
+Malicious Failure Mode: Coordinated Multi-Field Attack (Severity 2.9)
+
+Attack Configuration:
+- Patient: {pat_id}
+- Type: {attack_type}
+- Shift magnitude: {shift_mm} mm
+
+Description:
+{FAILURE_MODES["coordinated_multifield_attack"]["description"]}
+
+SQL Template (TEST DATABASE ONLY):
+
+-- Get all fields for patient
+SELECT FLD_ID, Field_Name, Gantry_Ang
+FROM TxField
+WHERE Pat_ID1 = '{pat_id}'
+
+"""
+
+        if attack_type == "geometric_shift":
+            result += f"""
+-- Shift all field apertures {shift_mm}mm in same direction
+-- Individual fields pass QA, but composite dose is shifted
+
+UPDATE TxFieldPoint
+SET A_Leaf_Set = shift_mlc_positions(A_Leaf_Set, direction='superior', amount_mm={shift_mm}),
+    B_Leaf_Set = shift_mlc_positions(B_Leaf_Set, direction='superior', amount_mm={shift_mm})
+WHERE FLD_ID IN (
+    SELECT FLD_ID FROM TxField WHERE Pat_ID1 = '{pat_id}'
+)
+
+-- Note: shift_mlc_positions() is a custom function - see malicious_features.py
+"""
+        elif attack_type == "compensatory_errors":
+            result += f"""
+-- Field 1: +10% MU, Field 2: -8% MU → Net: +2% (subtle)
+-- Each field appears within tolerance, composite dose wrong
+
+-- This requires identifying field pairs and applying opposite biases
+-- See MALICIOUS_ACTORS.md for full implementation
+"""
+
+        result += f"""
+Detection Strategy:
+1. 3D dose reconstruction from all fields
+2. Composite gamma analysis (not individual field)
+3. DVH metrics for targets/OARs
+4. Aperture centroid tracking across all fields
+
+Clinical Impact: Geometric miss of target volume
+Severity: 2.9 (Critical - evades field-level QA)
+"""
+        return [TextContent(type="text", text=result)]
+
+    elif name == "field_aperture_manipulation":
+        hostname = arguments["hostname"]
+        database = arguments.get("database", "MOSAIQ")
+        fld_id = arguments["fld_id"]
+        manipulation_type = arguments["manipulation_type"]
+        shift_mm = arguments.get("shift_mm", 3.0)
+
+        result = f"""
+Malicious Failure Mode: Field Aperture Manipulation (Severity 2.9)
+
+Configuration:
+- Field ID: {fld_id}
+- Type: {manipulation_type}
+- Shift: {shift_mm} mm
+
+SQL Template (TEST DATABASE ONLY):
+
+"""
+
+        if manipulation_type == "systematic_shift":
+            result += f"""
+-- Shift all MLC leaves {shift_mm}mm in same direction
+-- Result: Dose displaced from target → geometric miss
+
+UPDATE TxFieldPoint
+SET A_Leaf_Set = shift_all_leaves(A_Leaf_Set, {shift_mm}),
+    B_Leaf_Set = shift_all_leaves(B_Leaf_Set, {shift_mm})
+WHERE FLD_ID = {fld_id}
+
+-- Severity 3.0: Guaranteed geometric miss
+"""
+        elif manipulation_type == "margin_erosion":
+            result += f"""
+-- Erode PTV margin from 5mm to 2mm ({shift_mm}mm reduction)
+-- Increases risk of geographic miss
+
+UPDATE TxFieldPoint
+SET A_Leaf_Set = erode_aperture(A_Leaf_Set, {shift_mm}),
+    B_Leaf_Set = erode_aperture(B_Leaf_Set, {shift_mm})
+WHERE FLD_ID = {fld_id}
+"""
+
+        result += f"""
+Detection:
+1. MLC aperture centroid tracking
+2. PTV margin analysis
+3. Portal imaging comparison
+4. Aperture shape metrics (area, perimeter)
+
+Severity: {FAILURE_MODES["field_aperture_manipulation"]["severity"]["variants"][manipulation_type]}
+"""
+        return [TextContent(type="text", text=result)]
+
+    elif name == "gradual_parameter_drift":
+        hostname = arguments["hostname"]
+        database = arguments.get("database", "MOSAIQ")
+        pat_id = arguments["pat_id"]
+        drift_type = arguments["drift_type"]
+        drift_rate = arguments.get("drift_rate", 0.5)
+        num_fractions = arguments.get("num_fractions", 20)
+
+        result = f"""
+Malicious Failure Mode: Gradual Parameter Drift (Severity 2.8)
+
+Configuration:
+- Patient: {pat_id}
+- Type: {drift_type}
+- Drift rate: {drift_rate} per fraction
+- Duration: {num_fractions} fractions
+- Cumulative drift: {drift_rate * num_fractions}
+
+SQL Template (TEST DATABASE ONLY):
+
+"""
+
+        if drift_type == "isocenter_shift":
+            result += f"""
+-- Shift isocenter {drift_rate}mm per fraction
+-- After {num_fractions} fractions: {drift_rate * num_fractions}mm total shift (significant geometric error)
+
+DECLARE @fraction INT = 1
+WHILE @fraction <= {num_fractions}
+BEGIN
+    UPDATE Offset
+    SET Anterior_Offset = Anterior_Offset + {drift_rate}
+    WHERE Pat_ID1 = '{pat_id}'
+      AND fraction_number = @fraction
+
+    SET @fraction = @fraction + 1
+END
+
+-- Result: {drift_rate * num_fractions}mm cumulative shift → geographic miss
+"""
+        elif drift_type == "mu_creep":
+            result += f"""
+-- Increase MU by {drift_rate}% each fraction
+-- Evades daily tolerance but accumulates to {drift_rate * num_fractions}% overdose
+
+DECLARE @fraction INT = 1
+WHILE @fraction <= {num_fractions}
+BEGIN
+    UPDATE TxField
+    SET Meterset = Meterset * (1.0 + {drift_rate / 100})
+    WHERE Pat_ID1 = '{pat_id}'
+
+    SET @fraction = @fraction + 1
+END
+"""
+
+        result += """
+Detection:
+1. Longitudinal parameter tracking (plot vs fraction)
+2. Linear regression (detect trends)
+3. Change point detection (identify when drift started)
+4. Compare to initial baseline (first 3 fractions)
+
+Severity: 2.8 (Critical - long-term harm, difficult detection)
+"""
+        return [TextContent(type="text", text=result)]
+
+    elif name == "collimator_jaw_manipulation":
+        hostname = arguments["hostname"]
+        database = arguments.get("database", "MOSAIQ")
+        fld_id = arguments["fld_id"]
+        manipulation_type = arguments["manipulation_type"]
+        adjustment_cm = arguments.get("adjustment_cm", 0.5)
+
+        result = f"""
+Malicious Failure Mode: Collimator Jaw Manipulation (Severity 2.6)
+
+Configuration:
+- Field ID: {fld_id}
+- Type: {manipulation_type}
+- Adjustment: {adjustment_cm} cm
+
+SQL Template (TEST DATABASE ONLY):
+
+"""
+
+        if manipulation_type == "field_size_reduction":
+            result += f"""
+-- Reduce field size by closing jaws {adjustment_cm}cm
+-- Underdoses target periphery
+
+UPDATE TxFieldPoint
+SET X1_Jaw = X1_Jaw + {adjustment_cm},
+    X2_Jaw = X2_Jaw - {adjustment_cm},
+    Y1_Jaw = Y1_Jaw + {adjustment_cm},
+    Y2_Jaw = Y2_Jaw - {adjustment_cm}
+WHERE FLD_ID = {fld_id}
+
+-- Result: Field size reduced by {2 * adjustment_cm}cm in each dimension
+"""
+
+        result += """
+Detection:
+1. Jaw position verification (compare to plan)
+2. Field size calculation
+3. Portal imaging
+4. Jaw symmetry analysis
+
+Severity: 2.6-2.8 (Critical - geometric errors)
+"""
+        return [TextContent(type="text", text=result)]
+
+    elif name == "time_delayed_corruption":
+        hostname = arguments["hostname"]
+        database = arguments.get("database", "MOSAIQ")
+        target_date = arguments["target_date"]
+        corruption_type = arguments["corruption_type"]
+        target_fld_ids = arguments["target_fld_ids"]
+
+        result = f"""
+Malicious Failure Mode: Time-Delayed Corruption (Severity 2.8)
+
+Configuration:
+- Target date: {target_date}
+- Corruption type: {corruption_type}
+- Target fields: {target_fld_ids}
+
+Description:
+Modify future fractions now, creating temporal gap between attack and manifestation.
+This obscures audit trail and delays detection.
+
+WARNING: This is a SOPHISTICATED attack that modifies future treatments.
+Requires pre-treatment integrity verification to detect.
+
+Detection Strategy:
+1. SHA-256 checksums of approved treatment parameters
+2. Verify checksums before EACH fraction delivery
+3. Audit trail temporal analysis (flag modifications >24h before treatment)
+4. Parameter version control (track all changes)
+
+SQL Pattern (DOCUMENTATION ONLY - DO NOT EXECUTE):
+
+-- Modify treatments scheduled for {target_date}
+UPDATE TxField
+SET Meterset = Meterset * 1.15  -- 15% overdose
+WHERE FLD_ID IN ({', '.join(map(str, target_fld_ids))})
+
+-- Corruption occurs NOW but manifests on {target_date}
+-- Gap obscures attribution
+
+Severity: 2.8 (Critical - delayed detection, attribution difficulty)
+Response: Pre-treatment verification MANDATORY
+"""
+        return [TextContent(type="text", text=result)]
+
+    elif name == "statistical_camouflage":
+        hostname = arguments["hostname"]
+        database = arguments.get("database", "MOSAIQ")
+        pat_id = arguments["pat_id"]
+        camouflage_type = arguments["camouflage_type"]
+        bias_percent = arguments.get("bias_percent", 1.5)
+        noise_std_percent = arguments.get("noise_std_percent", 1.0)
+
+        result = f"""
+Malicious Failure Mode: Statistical Camouflage (Severity 2.9)
+
+Configuration:
+- Patient: {pat_id}
+- Type: {camouflage_type}
+- Systematic bias: {bias_percent}%
+- Random noise: {noise_std_percent}% std dev
+
+Description:
+Introduce systematic bias that stays within normal variance ranges.
+Example: Always +{bias_percent}% but never exceeds 3σ outlier threshold.
+
+Python Implementation (see malicious_features.py):
+
+import numpy as np
+
+def camouflaged_dose_escalation(baseline_mu, num_fractions):
+    systematic_bias = 1 + {bias_percent}/100  # {bias_percent}% bias
+    noise_std = {noise_std_percent}/100
+
+    delivered_mu = []
+    for fraction in range(num_fractions):
+        # Systematic bias + random noise
+        mu = baseline_mu * systematic_bias * (1 + np.random.normal(0, noise_std))
+
+        # Clip to stay within tolerance (±3%)
+        mu = np.clip(mu, baseline_mu * 0.97, baseline_mu * 1.03)
+
+        delivered_mu.append(mu)
+
+    # Result: Mean = +{bias_percent}% but appears as random variance
+    return delivered_mu
+
+Detection Methods:
+1. CUSUM analysis (accumulates small deviations)
+2. One-sample t-test (detect mean shift)
+3. Benford's Law (detect artificial data generation)
+4. Runs test (detect non-random patterns)
+
+Severity: 2.9 (Critical - sophisticated evasion of statistical QA)
+"""
         return [TextContent(type="text", text=result)]
 
     return [TextContent(type="text", text=f"Unknown tool: {name}")]
