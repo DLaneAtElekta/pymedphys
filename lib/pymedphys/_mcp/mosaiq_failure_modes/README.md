@@ -145,7 +145,33 @@ asyncio.run(list_modes())
 | `create_meterset_inconsistency` | MU mismatch issues | Test dose validation |
 | `mlc_leaf_count_mismatch` | Inconsistent leaf counts | Test MLC configuration checks |
 
-See [QA_FRAMEWORK.md](./QA_FRAMEWORK.md) for detailed QA checks and data requirements for each failure mode.
+### Malicious Actor Failure Modes (Severity 2.5-3.0)
+
+**⚠️ CRITICAL: These simulate INTENTIONAL SABOTAGE for defensive training purposes only**
+
+The server includes sophisticated malicious failure modes representing intentional attacks designed to evade detection:
+
+| Failure Mode | Severity | Description | Detection Strategy |
+|--------------|----------|-------------|-------------------|
+| `subtle_dose_escalation` | 2.9 | Gradual MU increase (+1.5%/fraction → 45% cumulative) | CUSUM, Mann-Kendall trend test |
+| `coordinated_multifield_attack` | 2.9 | Distributed errors across fields (each appears normal) | 3D dose reconstruction, composite gamma |
+| `field_aperture_manipulation` | 2.9-3.0 | Systematic MLC shift for geometric miss | Aperture centroid tracking, PTV margin analysis |
+| `gradual_parameter_drift` | 2.8 | Slow cumulative changes (0.5mm/fx → 10mm total) | Longitudinal tracking, regression analysis |
+| `collimator_jaw_manipulation` | 2.6-2.8 | Jaw position changes for field size errors | Jaw verification, portal imaging |
+| `time_delayed_corruption` | 2.8 | Modify future fractions (obscures audit trail) | Pre-treatment checksums, version control |
+| `statistical_camouflage` | 2.9 | Systematic bias within tolerance (evades 3σ detection) | One-sample t-test, Benford's Law, runs test |
+
+**Key Characteristics**:
+- All severity ≥2.5 (critical range) due to deliberate intent
+- Designed to evade standard QA through statistical/temporal/spatial evasion
+- Require advanced detection: CUSUM, 3D reconstruction, external audit logs
+- Response time <15 minutes for severity 2.9-3.0
+
+**See [MALICIOUS_ACTORS.md](./MALICIOUS_ACTORS.md) for comprehensive threat analysis and detection strategies.**
+
+---
+
+See [QA_FRAMEWORK.md](./QA_FRAMEWORK.md) for detailed QA checks and data requirements for all failure modes.
 
 ## MCP Tools
 
@@ -263,10 +289,10 @@ See [MULTIMODAL_QA.md](./MULTIMODAL_QA.md) for complete multi-modal QA documenta
 
 **Install additional dependencies**:
 ```bash
-uv add "torch>=2.0.0" "scikit-learn>=1.3.0" "numpy>=1.24.0"
+uv add "torch>=2.0.0" "scikit-learn>=1.3.0" "numpy>=1.24.0" "scipy>=1.10.0" "pandas>=2.0.0"
 ```
 
-**Run example training script**:
+**Standard Training (Accidental Errors Only)**:
 ```bash
 python -m pymedphys._mcp.mosaiq_failure_modes.example_training \
     --prod-host mosaiq.hospital.org \
@@ -280,9 +306,26 @@ python -m pymedphys._mcp.mosaiq_failure_modes.example_training \
 
 This will:
 1. Collect 2000 normal examples from production
-2. Generate 500 adversarial examples using failure modes
+2. Generate 500 adversarial examples using accidental failure modes
 3. Train EBM for 100 epochs
 4. Save model checkpoint and training history
+
+**Adversarial Training (Including Malicious Attacks)**:
+```bash
+python -m pymedphys._mcp.mosaiq_failure_modes.example_malicious_training \
+    --hostname testserver.local \
+    --database MosaiqTest_Malicious \
+    --num-samples 2000 \
+    --num-epochs 100 \
+    --output-dir ./malicious_models
+```
+
+This will:
+1. Generate **balanced dataset**: 50% normal, 45% accidental, 5% malicious
+2. Include sophisticated attacks: dose escalation, multi-field coordination, statistical camouflage
+3. Train with severity-weighted MSE loss (0.0-3.0 scale)
+4. Evaluate malicious vs accidental classification (precision, recall, F1)
+5. Save model + comprehensive metrics (including confidence scoring)
 
 ### Key Features
 
@@ -300,12 +343,20 @@ This will:
 - **Risk stratification**: Low (0.5-0.8), Medium (1.0-1.5), High (1.8-2.3), Critical (2.5-3.0)
 - **MSE loss function**: Model learns to output energy matching severity
 - **Clinical prioritization**: Critical failures trigger immediate alerts, low severity logged for trending
+- **Malicious intent factor**: Deliberate sabotage always ≥2.5 due to intent + evasion sophistication
 
 **Severity Examples**:
-- Critical (2.5-3.0): Wrong patient ID, extreme positioning offsets, negative MU
-- High (1.8-2.3): Missing control points, MLC out of range, dose errors
-- Medium (1.0-1.5): Duplicate treatments, timestamp inconsistencies
-- Low (0.5-0.8): Invalid angles (safety interlocks prevent delivery), parsing errors
+
+*Accidental Errors*:
+- Critical (2.5-2.8): Wrong patient ID (2.8), extreme offsets (2.7), negative MU (2.8)
+- High (1.8-2.3): Missing control points (1.8-2.5), MLC out of range (2.0), orphaned records (2.3-2.8)
+- Medium (1.0-1.5): Duplicate treatments (1.0-1.5), timestamp inconsistencies (1.0-1.3)
+- Low (0.5-0.8): Invalid angles (0.6-0.8), odd MLC bytes (0.6)
+
+*Malicious Attacks*:
+- Critical (2.7-3.0): Statistical camouflage (2.9), dose escalation (2.9), coordinated multi-field (2.9)
+- Critical (2.9-3.0): Aperture manipulation (2.9-3.0), targeted patient selection (3.0)
+- Critical (2.6-2.8): Parameter drift (2.8), time-delayed corruption (2.8), jaw manipulation (2.6)
 
 See [SEVERITY_SCALE.md](./SEVERITY_SCALE.md) for complete severity documentation.
 
