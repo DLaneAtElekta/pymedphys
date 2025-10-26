@@ -227,9 +227,37 @@ See the full [Implementation Roadmap](./QA_FRAMEWORK.md#implementation-roadmap) 
 This MCP server supports **adversarial training** of machine learning models for automated anomaly detection:
 
 1. **Generate adversarial training data** - Use failure mode corruptions as positive examples (anomalies)
-2. **Extract QA features** - 72 features from QA framework serve as model inputs
+2. **Extract multi-modal QA features** - Integrate features from multiple independent sources
 3. **Train Energy-Based Model** - Learn to assign low energy to normal data, high energy to anomalies
 4. **Deploy for real-time monitoring** - Automated detection of data quality issues
+
+### Multi-Modal QA Integration
+
+The framework integrates **four independent QA strands** for robust anomaly detection:
+
+**124 Total Features**:
+- **72 Mosaiq Database** - Treatment planning, workflow, timestamps
+- **18 TRF Files** - Machine log files (ground truth delivery from linac)
+- **11 Portal Dosimetry** - EPID-based dose measurements
+- **14 Phantom Dosimetry** - Physical QA measurements (ArcCHECK, Delta4, etc.)
+- **9 Cross-Validation** - Agreement metrics across modalities
+
+**Why Multi-Modal?**
+- **Independent verification**: Cross-validate across data sources
+- **Failure localization**: Identify if issue is in database, delivery, or planning
+- **Higher confidence**: Agreement across modalities reduces false positives
+- **Comprehensive coverage**: Each modality detects different failure types
+
+**Example Decision Matrix**:
+
+| Mosaiq | TRF | Portal | Interpretation | Action |
+|--------|-----|--------|----------------|--------|
+| ✓ | ✓ | ✓ | All agree - normal | None |
+| ✓ | ✗ | - | Mosaiq-TRF mismatch | **CRITICAL**: Database corruption |
+| ✓ | ✓ | ✗ | Delivery issue | Review portal, check linac |
+| ✗ | ✗ | ✗ | Complete system failure | **CRITICAL**: All systems affected |
+
+See [MULTIMODAL_QA.md](./MULTIMODAL_QA.md) for complete multi-modal QA documentation.
 
 ### Quick Start
 
