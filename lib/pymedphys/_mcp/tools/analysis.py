@@ -250,12 +250,13 @@ async def check_metersetmap_status(
     mosaiq_connection: Any | None = None,
     site_id: str | None = None,
     field_identifier: str | None = None,
+    qcl_task_description: str | None = None,
 ) -> dict[str, Any]:
     """Check if MetersetMap QA has been completed for a patient's treatment.
 
     This tool scans the configured output directory for existing MetersetMap
-    reports and compares against treatment delivery history from Mosaiq to
-    determine if QA is complete, pending, or overdue.
+    reports, checks Mosaiq QCL (Quality Checklist) status, and compares against
+    treatment delivery history to determine if QA is complete, pending, or overdue.
 
     Parameters
     ----------
@@ -265,18 +266,23 @@ async def check_metersetmap_status(
         Directory where MetersetMap PDF/PNG results are stored
         (e.g., ~/pymedphys-gui-metersetmap)
     mosaiq_connection : optional
-        Mosaiq connection for checking treatment history
+        Mosaiq connection for checking treatment history and QCL status
     site_id : str, optional
         Specific site ID to check (if not provided, checks all sites)
     field_identifier : str, optional
         Specific field identifier to check
+    qcl_task_description : str, optional
+        QCL task description to search for (e.g., "MetersetMap Check",
+        "Physics Check", "IMRT QA"). If provided, checks Mosaiq QCL for
+        completion status.
 
     Returns
     -------
     dict
         Status information including:
-        - has_completed_check: bool - Whether a map check exists
+        - has_completed_check: bool - Whether a map check exists (file or QCL)
         - check_files: list - Paths to existing check files
+        - qcl_status: dict - Mosaiq QCL checklist status (if connected)
         - treatment_status: dict - Treatment delivery info from Mosaiq
         - needs_check: bool - Whether a check is needed
         - reason: str - Explanation of the status
@@ -291,7 +297,10 @@ async def check_metersetmap_status(
         "patient_id": patient_id,
         "output_directory": str(output_path),
         "has_completed_check": False,
+        "has_file_check": False,
+        "has_qcl_check": False,
         "check_files": [],
+        "qcl_status": None,
         "treatment_status": None,
         "needs_check": False,
         "reason": "",
@@ -335,15 +344,40 @@ async def check_metersetmap_status(
                 )
 
         result["check_files"] = check_files
-        result["has_completed_check"] = len(check_files) > 0
+        result["has_file_check"] = len(check_files) > 0
 
-    # If Mosaiq connection available, check treatment status
+    # If Mosaiq connection available, check QCL status and treatment status
     if mosaiq_connection is not None:
         try:
             treatment_status = await _get_treatment_status(
                 mosaiq_connection, patient_id, site_id
             )
             result["treatment_status"] = treatment_status
+
+            # Check QCL (Quality Checklist) status if task description provided
+            if qcl_task_description:
+                qcl_status = await _get_qcl_status(
+                    mosaiq_connection, patient_id, qcl_task_description
+                )
+                result["qcl_status"] = qcl_status
+                result["has_qcl_check"] = qcl_status.get("has_completed_qcl", False)
+
+            # Determine overall completion status (file OR QCL)
+            result["has_completed_check"] = (
+                result["has_file_check"] or result["has_qcl_check"]
+            )
+
+            # Build status message including QCL info
+            qcl_info = ""
+            if result["qcl_status"]:
+                if result["has_qcl_check"]:
+                    qcl_info = (
+                        f" QCL completed: {result['qcl_status'].get('completed_date')}."
+                    )
+                else:
+                    pending = result["qcl_status"].get("pending_count", 0)
+                    if pending > 0:
+                        qcl_info = f" QCL pending: {pending} item(s)."
 
             # Determine if check is needed
             if treatment_status.get("has_rt_plan") and not treatment_status.get(
@@ -354,12 +388,12 @@ async def check_metersetmap_status(
                     result["needs_check"] = True
                     result["reason"] = (
                         "RT Plan imported but no MetersetMap check found. "
-                        "Check should be completed before first treatment."
+                        f"Check should be completed before first treatment.{qcl_info}"
                     )
                 else:
                     result["needs_check"] = False
                     result["reason"] = (
-                        "MetersetMap check completed, ready for treatment."
+                        f"MetersetMap check completed, ready for treatment.{qcl_info}"
                     )
 
             elif treatment_status.get("has_treatments"):
@@ -368,43 +402,145 @@ async def check_metersetmap_status(
                     result["needs_check"] = True
                     result["reason"] = (
                         "URGENT: Treatment has started but no MetersetMap check found! "
-                        f"First treatment: {treatment_status.get('first_treatment_date')}"
+                        f"First treatment: {treatment_status.get('first_treatment_date')}.{qcl_info}"
                     )
                 else:
                     # Check if check was done before first treatment
                     first_tx_date = treatment_status.get("first_treatment_date")
-                    if first_tx_date and result["check_files"]:
+                    check_date = None
+
+                    # Use QCL date if available, otherwise use file date
+                    if result["has_qcl_check"] and result["qcl_status"].get(
+                        "completed_date"
+                    ):
+                        check_date = result["qcl_status"]["completed_date"]
+                    elif result["check_files"]:
                         latest_check = max(
                             result["check_files"], key=lambda x: x["modified"]
                         )
                         check_date = latest_check["modified"]
-                        if check_date < first_tx_date:
-                            result["needs_check"] = False
-                            result["reason"] = (
-                                "MetersetMap check completed before treatment started."
-                            )
-                        else:
-                            result["reason"] = (
-                                f"WARNING: MetersetMap check ({check_date}) was done "
-                                f"after first treatment ({first_tx_date}). "
-                                "Review institutional policy."
-                            )
+
+                    if check_date and first_tx_date and check_date < first_tx_date:
+                        result["needs_check"] = False
+                        result["reason"] = (
+                            f"MetersetMap check completed before treatment started.{qcl_info}"
+                        )
+                    elif check_date:
+                        result["reason"] = (
+                            f"WARNING: MetersetMap check ({check_date}) was done "
+                            f"after first treatment ({first_tx_date}). "
+                            f"Review institutional policy.{qcl_info}"
+                        )
+                    else:
+                        result["reason"] = (
+                            f"MetersetMap check completed (no timestamp available).{qcl_info}"
+                        )
             else:
-                result["reason"] = "No RT Plan or treatments found for this patient."
+                result["reason"] = (
+                    f"No RT Plan or treatments found for this patient.{qcl_info}"
+                )
 
         except Exception as e:
             result["treatment_status"] = {"error": str(e)}
     else:
+        # No Mosaiq connection - can only check files
+        result["has_completed_check"] = result["has_file_check"]
         if result["has_completed_check"]:
             result["reason"] = (
                 f"Found {len(result['check_files'])} MetersetMap check(s). "
-                "Connect to Mosaiq to verify against treatment schedule."
+                "Connect to Mosaiq to verify against treatment schedule and QCL status."
             )
         else:
             result["reason"] = (
                 "No MetersetMap checks found. "
-                "Connect to Mosaiq to determine if check is needed."
+                "Connect to Mosaiq to determine if check is needed and check QCL status."
             )
+
+    return result
+
+
+async def _get_qcl_status(
+    connection: Any, patient_id: str, task_description: str
+) -> dict[str, Any]:
+    """Get QCL (Quality Checklist) status from Mosaiq for a patient.
+
+    Parameters
+    ----------
+    connection : Any
+        Active Mosaiq database connection
+    patient_id : str
+        Patient ID to check
+    task_description : str
+        QCL task description to search for (e.g., "MetersetMap Check")
+
+    Returns
+    -------
+    dict
+        QCL status including:
+        - has_completed_qcl: bool - Whether QCL is completed
+        - completed_date: str - Date QCL was completed (if applicable)
+        - pending_count: int - Number of pending QCL items
+        - qcl_items: list - Details of matching QCL items
+    """
+    import pymedphys
+
+    result = {
+        "has_completed_qcl": False,
+        "completed_date": None,
+        "pending_count": 0,
+        "qcl_items": [],
+        "task_searched": task_description,
+    }
+
+    # Query for QCL items matching the task description for this patient
+    query = """
+    SELECT
+        Chklist.Chk_id as checklist_id,
+        QCLTask.Description as task_description,
+        Chklist.Complete as is_complete,
+        Chklist.Due_DtTm as due_date,
+        Chklist.Act_DtTm as completed_date,
+        Chklist.Notes as notes,
+        Com_Staff.Last_Name as completed_by_last,
+        Com_Staff.First_Name as completed_by_first
+    FROM Chklist
+    INNER JOIN Patient Pat ON Chklist.Pat_ID1 = Pat.Pat_ID1
+    INNER JOIN QCLTask ON QCLTask.TSK_ID = Chklist.TSK_ID
+    LEFT JOIN Staff Com_Staff ON Com_Staff.Staff_ID = Chklist.Com_Staff_ID
+    WHERE Pat.Pat_ID1 = %s
+      AND QCLTask.Description LIKE %s
+    ORDER BY Chklist.Act_DtTm DESC, Chklist.Due_DtTm DESC
+    """
+
+    # Use wildcard matching for task description
+    task_pattern = f"%{task_description}%"
+
+    try:
+        results = pymedphys.mosaiq.execute(
+            connection, query, [patient_id, task_pattern]
+        )
+
+        for row in results:
+            qcl_item = {
+                "checklist_id": row[0],
+                "task_description": row[1],
+                "is_complete": bool(row[2]) if row[2] is not None else False,
+                "due_date": str(row[3]) if row[3] else None,
+                "completed_date": str(row[4]) if row[4] else None,
+                "notes": row[5],
+                "completed_by": (f"{row[7]} {row[6]}" if row[6] and row[7] else None),
+            }
+            result["qcl_items"].append(qcl_item)
+
+            if qcl_item["is_complete"]:
+                result["has_completed_qcl"] = True
+                if qcl_item["completed_date"] and not result["completed_date"]:
+                    result["completed_date"] = qcl_item["completed_date"]
+            else:
+                result["pending_count"] += 1
+
+    except Exception as e:
+        result["error"] = str(e)
 
     return result
 

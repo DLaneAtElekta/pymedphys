@@ -22,7 +22,32 @@ pymedphys mcp serve --dicom-dir /path/to/dicom --trf-dir /path/to/trf
 
 # With Mosaiq connection
 pymedphys mcp serve --mosaiq-server sql-server.hospital.org
+
+# With de-identification (RECOMMENDED for HIPAA compliance)
+pymedphys mcp serve --deidentify --mosaiq-server sql-server.hospital.org
 ```
+
+### De-identification (PHI Protection)
+
+**IMPORTANT**: When connecting to AI assistants, you should enable de-identification
+to protect Protected Health Information (PHI) and maintain HIPAA compliance:
+
+```bash
+# Enable de-identification
+pymedphys mcp serve --deidentify
+
+# With consistent pseudonyms across sessions
+pymedphys mcp serve --deidentify --deidentify-salt "your-secret-salt"
+```
+
+When de-identification is enabled:
+- **Patient IDs** and **names** are replaced with consistent pseudonyms (e.g., `PSEUDO_A1B2C3D4`)
+- **Birth dates** show only the year (e.g., `1980-XX-XX`)
+- **Sensitive fields** (SSN, contact info) are completely removed
+- **Clinical data** (treatment parameters, doses) remains intact for analysis
+
+The `--deidentify-salt` option ensures the same patient always gets the same
+pseudonym, allowing correlation of de-identified data across sessions.
 
 ### Claude Desktop Configuration
 
@@ -97,7 +122,8 @@ Calculate fluence maps from delivery data.
 ```
 
 #### `check_metersetmap_status`
-Check if MetersetMap QA has been completed for a patient's treatment.
+Check if MetersetMap QA has been completed for a patient's treatment. Checks both
+file system (PDF/PNG reports) and Mosaiq QCL (Quality Checklist) status.
 
 ```json
 {
@@ -105,14 +131,21 @@ Check if MetersetMap QA has been completed for a patient's treatment.
   "arguments": {
     "patient_id": "12345",
     "output_directory": "~/pymedphys-gui-metersetmap",
-    "site_id": "optional_site_id"
+    "site_id": "optional_site_id",
+    "qcl_task_description": "IMRT QA"
   }
 }
 ```
 
+The `qcl_task_description` parameter searches for matching QCL tasks in Mosaiq.
+Common values: "MetersetMap Check", "Physics Check", "IMRT QA", "Plan Check".
+
 Returns:
-- `has_completed_check`: Whether a map check exists
+- `has_completed_check`: Whether a map check exists (file OR QCL)
+- `has_file_check`: Whether a file-based check exists
+- `has_qcl_check`: Whether QCL is completed in Mosaiq
 - `check_files`: List of existing check files with timestamps
+- `qcl_status`: Mosaiq QCL checklist status (completed items, pending items)
 - `treatment_status`: Treatment delivery info from Mosaiq (if connected)
 - `needs_check`: Whether a check is needed
 - `reason`: Explanation of the status (including urgency warnings)

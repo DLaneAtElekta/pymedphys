@@ -58,6 +58,19 @@ def mcp_cli(subparsers):
         default="MOSAIQ",
         help="Mosaiq database name (default: MOSAIQ)",
     )
+    serve_parser.add_argument(
+        "--deidentify",
+        action="store_true",
+        help="De-identify PHI (Protected Health Information) before sending to AI. "
+        "RECOMMENDED for HIPAA compliance. Patient IDs/names are pseudonymized, "
+        "sensitive fields (SSN, contact info) are removed.",
+    )
+    serve_parser.add_argument(
+        "--deidentify-salt",
+        dest="deidentify_salt",
+        default="",
+        help="Salt for pseudonymization (ensures consistent pseudonyms across sessions)",
+    )
     serve_parser.set_defaults(func=_mcp_serve)
 
     # Info command
@@ -123,6 +136,8 @@ def _mcp_serve(args):
             dicom_directories=args.dicom_dirs or [],
             trf_directories=args.trf_dirs or [],
             working_directory=args.working_dir,
+            deidentify=args.deidentify,
+            deidentify_salt=args.deidentify_salt,
         )
     )
 
@@ -220,7 +235,9 @@ def _mcp_config(args):
         }
 
         print("Add the following to your Claude Desktop configuration:")
-        print("(Located at ~/Library/Application Support/Claude/claude_desktop_config.json on macOS)")
+        print(
+            "(Located at ~/Library/Application Support/Claude/claude_desktop_config.json on macOS)"
+        )
         print()
         print(json.dumps(config, indent=2))
         print()

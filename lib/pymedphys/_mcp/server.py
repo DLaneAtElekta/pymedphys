@@ -42,6 +42,8 @@ _server_config: dict[str, Any] = {
     "dicom_directories": [],
     "trf_directories": [],
     "working_directory": None,
+    "deidentify": False,
+    "deidentify_salt": "",
 }
 
 
@@ -50,6 +52,8 @@ def create_server(
     dicom_directories: list[str | Path] | None = None,
     trf_directories: list[str | Path] | None = None,
     working_directory: str | Path | None = None,
+    deidentify: bool = False,
+    deidentify_salt: str = "",
 ) -> Server:
     """Create and configure the PyMedPhys MCP server.
 
@@ -63,6 +67,16 @@ def create_server(
         Directories containing TRF log files to expose as resources.
     working_directory : str or Path, optional
         Working directory for file operations and output.
+    deidentify : bool
+        If True, de-identify PHI (Protected Health Information) before
+        returning data. Patient IDs and names will be pseudonymized,
+        and sensitive fields (SSN, contact info) will be removed.
+        Default is False for backwards compatibility, but SHOULD be
+        enabled when connecting to AI assistants.
+    deidentify_salt : str
+        Optional salt for pseudonymization. Using the same salt ensures
+        consistent pseudonyms across sessions, allowing correlation of
+        de-identified data.
 
     Returns
     -------
@@ -78,6 +92,17 @@ def create_server(
     _server_config["working_directory"] = (
         Path(working_directory) if working_directory else Path.cwd()
     )
+    _server_config["deidentify"] = deidentify
+    _server_config["deidentify_salt"] = deidentify_salt
+
+    # Log de-identification status
+    if deidentify:
+        logger.info("De-identification ENABLED - PHI will be pseudonymized")
+    else:
+        logger.warning(
+            "De-identification DISABLED - PHI will be sent to AI assistant. "
+            "Consider enabling with --deidentify flag for HIPAA compliance."
+        )
 
     # Register handlers
     _register_resources(server)
@@ -155,24 +180,33 @@ def _register_resources(server: Server):
     @server.read_resource()
     async def read_resource(uri: str) -> str:
         """Read a specific patient data resource."""
+        from . import deidentify
         from .resources import dicom as dicom_resources
         from .resources import mosaiq as mosaiq_resources
         from .resources import trf as trf_resources
 
         if uri.startswith("mosaiq://"):
-            return await mosaiq_resources.read_resource(
+            result = await mosaiq_resources.read_resource(
                 uri, _server_config["mosaiq_connection"]
             )
         elif uri.startswith("dicom://"):
-            return await dicom_resources.read_resource(
+            result = await dicom_resources.read_resource(
                 uri, _server_config["dicom_directories"]
             )
         elif uri.startswith("trf://"):
-            return await trf_resources.read_resource(
+            result = await trf_resources.read_resource(
                 uri, _server_config["trf_directories"]
             )
         else:
             raise ValueError(f"Unknown resource URI scheme: {uri}")
+
+        # Apply de-identification if enabled
+        if _server_config["deidentify"]:
+            result = deidentify.deidentify_json_string(
+                result, _server_config["deidentify_salt"]
+            )
+
+        return result
 
 
 def _register_tools(server: Server):
@@ -254,8 +288,9 @@ def _register_tools(server: Server):
             Tool(
                 name="check_metersetmap_status",
                 description="Check if MetersetMap QA has been completed for a patient's treatment. "
-                "Scans the output directory for existing MetersetMap reports and compares against "
-                "treatment delivery history from Mosaiq to determine if QA is complete, pending, or overdue.",
+                "Scans the output directory for existing MetersetMap reports, checks Mosaiq QCL "
+                "(Quality Checklist) status, and compares against treatment delivery history to "
+                "determine if QA is complete, pending, or overdue.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -275,6 +310,12 @@ def _register_tools(server: Server):
                         "field_identifier": {
                             "type": "string",
                             "description": "Optional: Specific field identifier to check",
+                        },
+                        "qcl_task_description": {
+                            "type": "string",
+                            "description": "Optional: QCL task description to search for in Mosaiq "
+                            "(e.g., 'MetersetMap Check', 'Physics Check', 'IMRT QA'). "
+                            "If provided, also checks Mosaiq QCL for completion status.",
                         },
                     },
                     "required": ["patient_id", "output_directory"],
@@ -677,6 +718,14 @@ def _register_tools(server: Server):
             else:
                 result = {"error": f"Unknown tool: {name}"}
 
+            # Apply de-identification if enabled
+            if _server_config["deidentify"]:
+                from . import deidentify
+
+                result = deidentify.deidentify_dict(
+                    result, _server_config["deidentify_salt"]
+                )
+
             return [
                 TextContent(type="text", text=json.dumps(result, indent=2, default=str))
             ]
@@ -848,6 +897,8 @@ async def run_server(
     dicom_directories: list[str | Path] | None = None,
     trf_directories: list[str | Path] | None = None,
     working_directory: str | Path | None = None,
+    deidentify: bool = False,
+    deidentify_salt: str = "",
 ):
     """Run the PyMedPhys MCP server.
 
@@ -864,12 +915,19 @@ async def run_server(
         Directories containing TRF files.
     working_directory : str or Path, optional
         Working directory for file operations.
+    deidentify : bool
+        If True, de-identify PHI before sending to AI assistant.
+        RECOMMENDED for HIPAA compliance.
+    deidentify_salt : str
+        Optional salt for consistent pseudonymization.
     """
     server = create_server(
         mosaiq_connection=mosaiq_connection,
         dicom_directories=dicom_directories,
         trf_directories=trf_directories,
         working_directory=working_directory,
+        deidentify=deidentify,
+        deidentify_salt=deidentify_salt,
     )
 
     async with stdio_server() as (read_stream, write_stream):
