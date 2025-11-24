@@ -45,12 +45,17 @@ async def read_resource(uri: str, connection: Any) -> str:
             return await _get_patient_list(connection)
         elif resource_path == "machines":
             return await _get_machine_list(connection)
+        elif resource_path == "sites":
+            return await _get_site_list(connection)
         elif resource_path.startswith("patient/"):
             patient_id = resource_path.split("/")[1]
             return await _get_patient_data(connection, patient_id)
         elif resource_path.startswith("field/"):
             field_id = resource_path.split("/")[1]
             return await _get_field_data(connection, field_id)
+        elif resource_path.startswith("site/"):
+            site_id = resource_path.split("/")[1]
+            return await _get_site_data(connection, site_id)
         else:
             return json.dumps({"error": f"Unknown Mosaiq resource: {resource_path}"})
     except Exception as e:
@@ -241,3 +246,181 @@ async def _get_field_data(connection: Any, field_id: str) -> str:
         return json.dumps({"field": field_data})
     except Exception as e:
         return json.dumps({"error": f"Failed to get field data: {str(e)}"})
+
+
+async def _get_site_list(connection: Any) -> str:
+    """Get list of treatment sites from Mosaiq."""
+    import pymedphys
+
+    query = """
+    SELECT TOP 100
+        Site.SIT_ID as site_id,
+        Site.Site_Name as site_name,
+        Site.Target_Vol as target_volume,
+        Site.Version as version,
+        Pat.Pat_ID1 as patient_id,
+        Pat.Last_Name as patient_last_name,
+        Pat.First_Name as patient_first_name
+    FROM Site
+    INNER JOIN Patient Pat ON Site.Pat_ID1 = Pat.Pat_ID1
+    WHERE Site.Site_Name IS NOT NULL
+    ORDER BY Site.SIT_ID DESC
+    """
+
+    try:
+        results = pymedphys.mosaiq.execute(connection, query)
+        sites = [
+            {
+                "site_id": row[0],
+                "site_name": row[1],
+                "target_volume": row[2],
+                "version": row[3],
+                "patient_id": row[4],
+                "patient_last_name": row[5],
+                "patient_first_name": row[6],
+            }
+            for row in results
+        ]
+        return json.dumps({"sites": sites, "count": len(sites)})
+    except Exception as e:
+        return json.dumps({"error": f"Failed to query sites: {str(e)}"})
+
+
+async def _get_site_data(connection: Any, site_id: str) -> str:
+    """Get detailed site data from Mosaiq including RT Plan and TX field status."""
+    import pymedphys
+
+    # Get site details
+    site_query = """
+    SELECT
+        Site.SIT_ID as site_id,
+        Site.Site_Name as site_name,
+        Site.Target_Vol as target_volume,
+        Site.Version as version,
+        Site.Note as notes,
+        Pat.Pat_ID1 as patient_id,
+        Pat.Last_Name as patient_last_name,
+        Pat.First_Name as patient_first_name
+    FROM Site
+    INNER JOIN Patient Pat ON Site.Pat_ID1 = Pat.Pat_ID1
+    WHERE Site.SIT_ID = %s
+    """
+
+    # Get associated prescriptions
+    rx_query = """
+    SELECT
+        PCP.PCP_ID as prescription_id,
+        PCP.Label as label,
+        PCP.Total_Dose as total_dose,
+        PCP.Daily_Dose as daily_dose,
+        PCP.Fractions as fractions
+    FROM PCP
+    WHERE PCP.SIT_ID = %s
+    """
+
+    # Get treatment fields for this site
+    fields_query = """
+    SELECT
+        TxField.FLD_ID as field_id,
+        TxField.Field_Label as field_label,
+        TxField.Field_Name as field_name,
+        TxField.Meterset as meterset,
+        TxField.Energy as energy,
+        TxField.Technique as technique,
+        Machine.Machine_Name as machine_name
+    FROM TxField
+    LEFT JOIN Machine ON TxField.Machine_ID = Machine.Machine_ID
+    WHERE TxField.SIT_ID = %s
+    """
+
+    # Check for RT Plan references (imported DICOM plans)
+    rtplan_query = """
+    SELECT
+        Study.Std_ID as study_id,
+        Study.Study_UID as study_uid,
+        Study.Study_Desc as study_description,
+        Study.Study_DtTm as study_datetime
+    FROM Study
+    INNER JOIN Site ON Study.Pat_ID1 = Site.Pat_ID1
+    WHERE Site.SIT_ID = %s
+      AND Study.Modality = 'RTPLAN'
+    """
+
+    try:
+        # Get site info
+        site_results = pymedphys.mosaiq.execute(connection, site_query, [site_id])
+        if not site_results:
+            return json.dumps({"error": f"Site not found: {site_id}"})
+
+        row = site_results[0]
+        site_data = {
+            "site_id": row[0],
+            "site_name": row[1],
+            "target_volume": row[2],
+            "version": row[3],
+            "notes": row[4],
+            "patient_id": row[5],
+            "patient_last_name": row[6],
+            "patient_first_name": row[7],
+        }
+
+        # Get prescriptions
+        rx_results = pymedphys.mosaiq.execute(connection, rx_query, [site_id])
+        prescriptions = [
+            {
+                "prescription_id": row[0],
+                "label": row[1],
+                "total_dose": float(row[2]) if row[2] else None,
+                "daily_dose": float(row[3]) if row[3] else None,
+                "fractions": int(row[4]) if row[4] else None,
+            }
+            for row in rx_results
+        ]
+
+        # Get treatment fields
+        fields_results = pymedphys.mosaiq.execute(connection, fields_query, [site_id])
+        fields = [
+            {
+                "field_id": row[0],
+                "field_label": row[1],
+                "field_name": row[2],
+                "meterset": float(row[3]) if row[3] else None,
+                "energy": row[4],
+                "technique": row[5],
+                "machine_name": row[6],
+            }
+            for row in fields_results
+        ]
+
+        # Check for RT Plans
+        rtplan_results = pymedphys.mosaiq.execute(connection, rtplan_query, [site_id])
+        rt_plans = [
+            {
+                "study_id": row[0],
+                "study_uid": row[1],
+                "study_description": row[2],
+                "study_datetime": str(row[3]) if row[3] else None,
+            }
+            for row in rtplan_results
+        ]
+
+        # Determine review status
+        has_rt_plan = len(rt_plans) > 0
+        has_tx_fields = len(fields) > 0
+        needs_review = has_rt_plan and not has_tx_fields
+
+        return json.dumps({
+            "site": site_data,
+            "prescriptions": prescriptions,
+            "fields": fields,
+            "rt_plans": rt_plans,
+            "status": {
+                "has_rt_plan": has_rt_plan,
+                "has_tx_fields": has_tx_fields,
+                "needs_review": needs_review,
+                "review_reason": "RT Plan imported but no treatment fields defined"
+                if needs_review else None,
+            },
+        })
+    except Exception as e:
+        return json.dumps({"error": f"Failed to get site data: {str(e)}"})

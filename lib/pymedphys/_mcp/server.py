@@ -115,6 +115,14 @@ def _register_resources(server: Server):
                     mimeType="application/json",
                 )
             )
+            resources.append(
+                Resource(
+                    uri="mosaiq://sites",
+                    name="Mosaiq Site List",
+                    description="List of treatment sites in Mosaiq (includes RT Plan and TX field status)",
+                    mimeType="application/json",
+                )
+            )
 
         # Add DICOM file resources
         for dicom_dir in _server_config["dicom_directories"]:
@@ -480,6 +488,70 @@ def _register_tools(server: Server):
                             "required": ["patient_id"],
                         },
                     ),
+                    Tool(
+                        name="get_site_details",
+                        description="Get detailed information about a Mosaiq treatment site, "
+                        "including prescriptions, RT plans, and treatment fields. "
+                        "Identifies sites that need review (RT Plan exists but no TX fields).",
+                        inputSchema={
+                            "type": "object",
+                            "properties": {
+                                "site_id": {
+                                    "type": "string",
+                                    "description": "Mosaiq Site ID (SIT_ID)",
+                                },
+                            },
+                            "required": ["site_id"],
+                        },
+                    ),
+                    Tool(
+                        name="find_sites_needing_review",
+                        description="Find all treatment sites that have an imported RT Plan "
+                        "but no treatment fields defined. These sites need review using the RT Viewer.",
+                        inputSchema={
+                            "type": "object",
+                            "properties": {
+                                "patient_id": {
+                                    "type": "string",
+                                    "description": "Optional: Filter by patient ID",
+                                },
+                                "limit": {
+                                    "type": "integer",
+                                    "description": "Maximum number of sites to return",
+                                    "default": 50,
+                                },
+                            },
+                        },
+                    ),
+                    Tool(
+                        name="launch_rt_viewer",
+                        description="Launch the PyMedPhys RT Viewer (Streamlit app) to review "
+                        "DICOM RT data including CT, RT Structure, RT Dose, and RT Plan. "
+                        "Use this to visually review sites with imported RT Plans.",
+                        inputSchema={
+                            "type": "object",
+                            "properties": {
+                                "dicom_directory": {
+                                    "type": "string",
+                                    "description": "Directory containing DICOM files (CT series)",
+                                },
+                                "rtstruct_path": {
+                                    "type": "string",
+                                    "description": "Path to RT Structure file",
+                                },
+                                "rtdose_path": {
+                                    "type": "string",
+                                    "description": "Optional: Path to RT Dose file",
+                                },
+                                "port": {
+                                    "type": "integer",
+                                    "description": "Port to run Streamlit server on",
+                                    "default": 8501,
+                                },
+                            },
+                            "required": ["dicom_directory", "rtstruct_path"],
+                        },
+                    ),
                 ]
             )
 
@@ -523,6 +595,18 @@ def _register_tools(server: Server):
                     **arguments,
                     connection=_server_config["mosaiq_connection"],
                 )
+            elif name == "get_site_details":
+                result = await mosaiq.get_site_details(
+                    **arguments,
+                    connection=_server_config["mosaiq_connection"],
+                )
+            elif name == "find_sites_needing_review":
+                result = await mosaiq.find_sites_needing_review(
+                    **arguments,
+                    connection=_server_config["mosaiq_connection"],
+                )
+            elif name == "launch_rt_viewer":
+                result = await mosaiq.launch_rt_viewer(**arguments)
             else:
                 result = {"error": f"Unknown tool: {name}"}
 

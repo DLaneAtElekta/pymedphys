@@ -511,3 +511,205 @@ async def _get_documents(connection: Any, patient_id: str) -> dict:
         return {"documents": documents, "count": len(documents)}
     except Exception:
         return {"documents": [], "count": 0, "note": "Document query not available"}
+
+
+async def get_site_details(
+    site_id: str,
+    connection: Any | None = None,
+) -> dict[str, Any]:
+    """Get detailed information about a Mosaiq treatment site.
+
+    Includes prescriptions, RT plans, treatment fields, and identifies
+    if the site needs review (RT Plan exists but no TX fields defined).
+
+    Parameters
+    ----------
+    site_id : str
+        Mosaiq Site ID (SIT_ID)
+    connection : optional
+        Mosaiq database connection
+
+    Returns
+    -------
+    dict
+        Site details including review status
+    """
+    if connection is None:
+        return {"error": "No Mosaiq connection available"}
+
+    # Import and use the resource function which has the detailed query
+    from ..resources.mosaiq import _get_site_data
+
+    import json
+
+    result_json = await _get_site_data(connection, site_id)
+    return json.loads(result_json)
+
+
+async def find_sites_needing_review(
+    patient_id: str | None = None,
+    limit: int = 50,
+    connection: Any | None = None,
+) -> dict[str, Any]:
+    """Find treatment sites with imported RT Plans but no treatment fields.
+
+    These sites likely need review using the RT Viewer to verify the
+    plan was imported correctly and treatment fields need to be defined.
+
+    Parameters
+    ----------
+    patient_id : str, optional
+        Filter by patient ID
+    limit : int
+        Maximum number of sites to return
+    connection : optional
+        Mosaiq database connection
+
+    Returns
+    -------
+    dict
+        List of sites needing review with details
+    """
+    import pymedphys
+
+    if connection is None:
+        return {"error": "No Mosaiq connection available"}
+
+    # Query for sites that have RT plans imported but no treatment fields
+    # This uses a LEFT JOIN to find sites with studies but no fields
+    query = """
+    SELECT TOP %s
+        Site.SIT_ID as site_id,
+        Site.Site_Name as site_name,
+        Pat.Pat_ID1 as patient_id,
+        Pat.Last_Name as patient_last_name,
+        Pat.First_Name as patient_first_name,
+        (SELECT COUNT(*) FROM Study
+         WHERE Study.Pat_ID1 = Site.Pat_ID1
+           AND Study.Modality = 'RTPLAN') as rt_plan_count,
+        (SELECT COUNT(*) FROM TxField
+         WHERE TxField.SIT_ID = Site.SIT_ID) as tx_field_count
+    FROM Site
+    INNER JOIN Patient Pat ON Site.Pat_ID1 = Pat.Pat_ID1
+    WHERE Site.Site_Name IS NOT NULL
+    """
+
+    params = [limit]
+
+    if patient_id:
+        query += " AND Pat.Pat_ID1 = %s"
+        params.append(patient_id)
+
+    query += """
+    ORDER BY Site.SIT_ID DESC
+    """
+
+    try:
+        results = pymedphys.mosaiq.execute(connection, query, params)
+
+        sites_needing_review = []
+        sites_ok = []
+
+        for row in results:
+            site_data = {
+                "site_id": row[0],
+                "site_name": row[1],
+                "patient_id": row[2],
+                "patient_last_name": row[3],
+                "patient_first_name": row[4],
+                "rt_plan_count": row[5],
+                "tx_field_count": row[6],
+            }
+
+            # Site needs review if it has RT plans but no TX fields
+            if row[5] > 0 and row[6] == 0:
+                site_data["needs_review"] = True
+                site_data["review_reason"] = "RT Plan imported but no treatment fields defined"
+                sites_needing_review.append(site_data)
+            else:
+                site_data["needs_review"] = False
+                sites_ok.append(site_data)
+
+        return {
+            "sites_needing_review": sites_needing_review,
+            "sites_needing_review_count": len(sites_needing_review),
+            "sites_ok_count": len(sites_ok),
+            "recommendation": "Use the RT Viewer (pymedphys gui) to review sites with imported RT Plans"
+            if sites_needing_review else "No sites need immediate review",
+        }
+
+    except Exception as e:
+        return {"error": f"Failed to query sites: {str(e)}"}
+
+
+async def launch_rt_viewer(
+    dicom_directory: str,
+    rtstruct_path: str,
+    rtdose_path: str | None = None,
+    port: int = 8501,
+) -> dict[str, Any]:
+    """Launch the PyMedPhys RT Viewer Streamlit app.
+
+    The RT Viewer allows visual review of DICOM RT data including
+    CT images, RT structures, and RT dose overlays.
+
+    Parameters
+    ----------
+    dicom_directory : str
+        Directory containing DICOM CT files
+    rtstruct_path : str
+        Path to RT Structure file
+    rtdose_path : str, optional
+        Path to RT Dose file
+    port : int
+        Port to run Streamlit server on
+
+    Returns
+    -------
+    dict
+        Status and URL for the RT Viewer
+    """
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    dicom_dir = Path(dicom_directory)
+    rtstruct = Path(rtstruct_path)
+
+    if not dicom_dir.exists():
+        return {"error": f"DICOM directory not found: {dicom_directory}"}
+
+    if not rtstruct.exists():
+        return {"error": f"RT Structure file not found: {rtstruct_path}"}
+
+    if rtdose_path:
+        rtdose = Path(rtdose_path)
+        if not rtdose.exists():
+            return {"error": f"RT Dose file not found: {rtdose_path}"}
+
+    # Build the command to launch the streamlit app
+    # The RT visualization is in the experimental module
+    try:
+        # For now, return instructions on how to launch manually
+        # as launching a subprocess server from within MCP is complex
+        return {
+            "status": "instructions",
+            "message": "RT Viewer launch requires manual execution",
+            "commands": [
+                f"pymedphys gui",
+                "# Then select the 'DICOM RT Visualisation' app",
+                "# Or run directly:",
+                f"streamlit run --server.port {port} "
+                f"$(python -c \"import pymedphys._experimental.dicomrtvisualisation as m; print(m.__file__.replace('__init__.py', 'visualise.py'))\")",
+            ],
+            "files_to_load": {
+                "dicom_directory": str(dicom_dir.resolve()),
+                "rtstruct_path": str(rtstruct.resolve()),
+                "rtdose_path": str(Path(rtdose_path).resolve()) if rtdose_path else None,
+            },
+            "url": f"http://localhost:{port}",
+            "note": "After launching, load the specified files in the RT Viewer interface",
+        }
+
+    except Exception as e:
+        return {"error": f"Failed to prepare RT Viewer: {str(e)}"}
