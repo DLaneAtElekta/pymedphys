@@ -73,7 +73,9 @@ async def gamma_analysis(
 
     # Calculate statistics
     valid_gamma = gamma[~np.isnan(gamma)]
-    pass_rate = np.sum(valid_gamma <= 1) / len(valid_gamma) * 100 if len(valid_gamma) > 0 else 0
+    pass_rate = (
+        np.sum(valid_gamma <= 1) / len(valid_gamma) * 100 if len(valid_gamma) > 0 else 0
+    )
 
     results = {
         "pass_rate_percent": float(pass_rate),
@@ -213,9 +215,7 @@ async def calculate_metersetmap(
         # Save to temporary file and return path
         import tempfile
 
-        with tempfile.NamedTemporaryFile(
-            suffix=".npy", delete=False, mode="wb"
-        ) as f:
+        with tempfile.NamedTemporaryFile(suffix=".npy", delete=False, mode="wb") as f:
             np.save(f, {"grid": grid, "metersetmap": metersetmap})
             result["numpy_file"] = f.name
     elif output_format == "image":
@@ -242,3 +242,363 @@ async def calculate_metersetmap(
         plt.close(fig)
 
     return result
+
+
+async def check_metersetmap_status(
+    patient_id: str,
+    output_directory: str,
+    mosaiq_connection: Any | None = None,
+    site_id: str | None = None,
+    field_identifier: str | None = None,
+) -> dict[str, Any]:
+    """Check if MetersetMap QA has been completed for a patient's treatment.
+
+    This tool scans the configured output directory for existing MetersetMap
+    reports and compares against treatment delivery history from Mosaiq to
+    determine if QA is complete, pending, or overdue.
+
+    Parameters
+    ----------
+    patient_id : str
+        Patient ID to check
+    output_directory : str
+        Directory where MetersetMap PDF/PNG results are stored
+        (e.g., ~/pymedphys-gui-metersetmap)
+    mosaiq_connection : optional
+        Mosaiq connection for checking treatment history
+    site_id : str, optional
+        Specific site ID to check (if not provided, checks all sites)
+    field_identifier : str, optional
+        Specific field identifier to check
+
+    Returns
+    -------
+    dict
+        Status information including:
+        - has_completed_check: bool - Whether a map check exists
+        - check_files: list - Paths to existing check files
+        - treatment_status: dict - Treatment delivery info from Mosaiq
+        - needs_check: bool - Whether a check is needed
+        - reason: str - Explanation of the status
+    """
+    import os
+    from datetime import datetime
+    from pathlib import Path
+
+    output_path = Path(os.path.expanduser(output_directory)).resolve()
+
+    result = {
+        "patient_id": patient_id,
+        "output_directory": str(output_path),
+        "has_completed_check": False,
+        "check_files": [],
+        "treatment_status": None,
+        "needs_check": False,
+        "reason": "",
+    }
+
+    # Search for existing map check files matching patient ID
+    if output_path.exists():
+        # Look for PDF files with patient ID in name
+        pdf_files = list(output_path.glob(f"{patient_id}*.pdf"))
+        png_dirs = [
+            d
+            for d in output_path.iterdir()
+            if d.is_dir() and d.name.startswith(patient_id)
+        ]
+
+        check_files = []
+        for pdf in pdf_files:
+            stat = pdf.stat()
+            check_files.append(
+                {
+                    "path": str(pdf),
+                    "type": "pdf",
+                    "filename": pdf.name,
+                    "created": datetime.fromtimestamp(stat.st_ctime).isoformat(),
+                    "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                }
+            )
+
+        for png_dir in png_dirs:
+            report_png = png_dir / "report.png"
+            if report_png.exists():
+                stat = report_png.stat()
+                check_files.append(
+                    {
+                        "path": str(png_dir),
+                        "type": "png_directory",
+                        "filename": png_dir.name,
+                        "created": datetime.fromtimestamp(stat.st_ctime).isoformat(),
+                        "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                    }
+                )
+
+        result["check_files"] = check_files
+        result["has_completed_check"] = len(check_files) > 0
+
+    # If Mosaiq connection available, check treatment status
+    if mosaiq_connection is not None:
+        try:
+            treatment_status = await _get_treatment_status(
+                mosaiq_connection, patient_id, site_id
+            )
+            result["treatment_status"] = treatment_status
+
+            # Determine if check is needed
+            if treatment_status.get("has_rt_plan") and not treatment_status.get(
+                "has_treatments"
+            ):
+                # RT Plan imported but no treatments yet
+                if not result["has_completed_check"]:
+                    result["needs_check"] = True
+                    result["reason"] = (
+                        "RT Plan imported but no MetersetMap check found. "
+                        "Check should be completed before first treatment."
+                    )
+                else:
+                    result["needs_check"] = False
+                    result["reason"] = (
+                        "MetersetMap check completed, ready for treatment."
+                    )
+
+            elif treatment_status.get("has_treatments"):
+                # Treatment has started
+                if not result["has_completed_check"]:
+                    result["needs_check"] = True
+                    result["reason"] = (
+                        "URGENT: Treatment has started but no MetersetMap check found! "
+                        f"First treatment: {treatment_status.get('first_treatment_date')}"
+                    )
+                else:
+                    # Check if check was done before first treatment
+                    first_tx_date = treatment_status.get("first_treatment_date")
+                    if first_tx_date and result["check_files"]:
+                        latest_check = max(
+                            result["check_files"], key=lambda x: x["modified"]
+                        )
+                        check_date = latest_check["modified"]
+                        if check_date < first_tx_date:
+                            result["needs_check"] = False
+                            result["reason"] = (
+                                "MetersetMap check completed before treatment started."
+                            )
+                        else:
+                            result["reason"] = (
+                                f"WARNING: MetersetMap check ({check_date}) was done "
+                                f"after first treatment ({first_tx_date}). "
+                                "Review institutional policy."
+                            )
+            else:
+                result["reason"] = "No RT Plan or treatments found for this patient."
+
+        except Exception as e:
+            result["treatment_status"] = {"error": str(e)}
+    else:
+        if result["has_completed_check"]:
+            result["reason"] = (
+                f"Found {len(result['check_files'])} MetersetMap check(s). "
+                "Connect to Mosaiq to verify against treatment schedule."
+            )
+        else:
+            result["reason"] = (
+                "No MetersetMap checks found. "
+                "Connect to Mosaiq to determine if check is needed."
+            )
+
+    return result
+
+
+async def _get_treatment_status(
+    connection: Any, patient_id: str, site_id: str | None = None
+) -> dict[str, Any]:
+    """Get treatment status from Mosaiq for a patient.
+
+    Returns information about RT Plans, treatment sites, and delivery history.
+    """
+    import pymedphys
+
+    result = {
+        "has_rt_plan": False,
+        "has_treatments": False,
+        "first_treatment_date": None,
+        "last_treatment_date": None,
+        "total_fractions_delivered": 0,
+        "sites": [],
+    }
+
+    # Query for patient's sites and RT Plans
+    site_query = """
+    SELECT
+        Site.SIT_ID,
+        Site.Site_Name,
+        Site.Version,
+        (SELECT COUNT(*) FROM Study
+         WHERE Study.Pat_ID1 = Pat.Pat_ID1
+         AND Study.Modality = 'RTPLAN') as rt_plan_count
+    FROM Site
+    INNER JOIN Patient Pat ON Site.Pat_ID1 = Pat.Pat_ID1
+    WHERE Pat.Pat_ID1 = %s
+    """
+
+    if site_id:
+        site_query += " AND Site.SIT_ID = %s"
+        params = [patient_id, site_id]
+    else:
+        params = [patient_id]
+
+    site_results = pymedphys.mosaiq.execute(connection, site_query, params)
+
+    for row in site_results:
+        site_info = {
+            "site_id": row[0],
+            "site_name": row[1],
+            "version": row[2],
+            "rt_plan_count": row[3],
+        }
+        result["sites"].append(site_info)
+        if row[3] > 0:
+            result["has_rt_plan"] = True
+
+    # Query for treatment history (Dose_Hst)
+    tx_query = """
+    SELECT
+        MIN(Dose_Hst.Tx_DtTm) as first_treatment,
+        MAX(Dose_Hst.Tx_DtTm) as last_treatment,
+        COUNT(*) as fraction_count
+    FROM Dose_Hst
+    INNER JOIN Site ON Dose_Hst.SIT_ID = Site.SIT_ID
+    INNER JOIN Patient Pat ON Site.Pat_ID1 = Pat.Pat_ID1
+    WHERE Pat.Pat_ID1 = %s
+    """
+
+    if site_id:
+        tx_query += " AND Site.SIT_ID = %s"
+
+    tx_results = pymedphys.mosaiq.execute(connection, tx_query, params)
+
+    if tx_results and tx_results[0][0]:
+        result["has_treatments"] = True
+        result["first_treatment_date"] = str(tx_results[0][0])
+        result["last_treatment_date"] = str(tx_results[0][1])
+        result["total_fractions_delivered"] = tx_results[0][2]
+
+    return result
+
+
+async def find_pending_metersetmap_checks(
+    output_directory: str,
+    mosaiq_connection: Any,
+    days_threshold: int = 7,
+    limit: int = 50,
+) -> dict[str, Any]:
+    """Find patients with RT Plans that need MetersetMap QA checks.
+
+    Scans Mosaiq for sites with RT Plans imported in the last N days
+    that don't have corresponding MetersetMap check files.
+
+    Parameters
+    ----------
+    output_directory : str
+        Directory where MetersetMap results are stored
+    mosaiq_connection : Any
+        Active Mosaiq database connection
+    days_threshold : int
+        Look for RT Plans imported within this many days
+    limit : int
+        Maximum number of results to return
+
+    Returns
+    -------
+    dict
+        List of patients/sites needing MetersetMap checks
+    """
+    import os
+    from pathlib import Path
+
+    import pymedphys
+
+    output_path = Path(os.path.expanduser(output_directory)).resolve()
+
+    # Find recent RT Plan imports
+    query = """
+    SELECT TOP %s
+        Pat.Pat_ID1 as patient_id,
+        Pat.Last_Name as last_name,
+        Pat.First_Name as first_name,
+        Site.SIT_ID as site_id,
+        Site.Site_Name as site_name,
+        Study.Study_DtTm as import_date,
+        (SELECT COUNT(*) FROM TxField WHERE TxField.SIT_ID = Site.SIT_ID) as field_count,
+        (SELECT COUNT(*) FROM Dose_Hst WHERE Dose_Hst.SIT_ID = Site.SIT_ID) as treatment_count
+    FROM Study
+    INNER JOIN Patient Pat ON Study.Pat_ID1 = Pat.Pat_ID1
+    LEFT JOIN Site ON Site.Pat_ID1 = Pat.Pat_ID1
+    WHERE Study.Modality = 'RTPLAN'
+      AND Study.Study_DtTm >= DATEADD(day, -%s, GETDATE())
+    ORDER BY Study.Study_DtTm DESC
+    """
+
+    results = pymedphys.mosaiq.execute(
+        mosaiq_connection, query, [limit, days_threshold]
+    )
+
+    pending_checks = []
+    completed_checks = []
+
+    for row in results:
+        patient_id = str(row[0])
+
+        # Check if MetersetMap exists for this patient
+        has_check = False
+        if output_path.exists():
+            pdf_files = list(output_path.glob(f"{patient_id}*.pdf"))
+            has_check = len(pdf_files) > 0
+
+        patient_info = {
+            "patient_id": patient_id,
+            "patient_name": f"{row[2]} {row[1]}",
+            "site_id": row[3],
+            "site_name": row[4],
+            "import_date": str(row[5]) if row[5] else None,
+            "field_count": row[6],
+            "treatment_count": row[7],
+            "has_metersetmap_check": has_check,
+        }
+
+        if has_check:
+            completed_checks.append(patient_info)
+        else:
+            # Prioritize by urgency
+            if row[7] > 0:  # Has treatments
+                patient_info["urgency"] = "CRITICAL"
+                patient_info["urgency_reason"] = "Treatment started without check"
+            elif row[6] > 0:  # Has TX fields
+                patient_info["urgency"] = "HIGH"
+                patient_info["urgency_reason"] = "Ready for treatment, needs check"
+            else:
+                patient_info["urgency"] = "NORMAL"
+                patient_info["urgency_reason"] = "RT Plan imported, awaiting setup"
+
+            pending_checks.append(patient_info)
+
+    # Sort by urgency
+    urgency_order = {"CRITICAL": 0, "HIGH": 1, "NORMAL": 2}
+    pending_checks.sort(key=lambda x: urgency_order.get(x["urgency"], 3))
+
+    return {
+        "pending_checks": pending_checks,
+        "completed_checks": completed_checks,
+        "summary": {
+            "total_pending": len(pending_checks),
+            "total_completed": len(completed_checks),
+            "critical_count": len(
+                [p for p in pending_checks if p["urgency"] == "CRITICAL"]
+            ),
+            "high_priority_count": len(
+                [p for p in pending_checks if p["urgency"] == "HIGH"]
+            ),
+        },
+        "output_directory": str(output_path),
+        "days_threshold": days_threshold,
+    }

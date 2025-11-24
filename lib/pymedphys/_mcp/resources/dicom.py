@@ -122,9 +122,7 @@ def _extract_rtplan_metadata(ds) -> dict:
     if hasattr(ds, "FractionGroupSequence"):
         fg = ds.FractionGroupSequence[0]
         plan_data["fractions"] = getattr(fg, "NumberOfFractionsPlanned", None)
-        plan_data["num_beams_in_fraction"] = getattr(
-            fg, "NumberOfBeams", None
-        )
+        plan_data["num_beams_in_fraction"] = getattr(fg, "NumberOfBeams", None)
 
     return plan_data
 
@@ -159,10 +157,7 @@ def _extract_rtstruct_metadata(ds) -> dict:
     # Extract structure information
     structures = []
     if hasattr(ds, "StructureSetROISequence"):
-        roi_dict = {
-            roi.ROINumber: roi.ROIName
-            for roi in ds.StructureSetROISequence
-        }
+        roi_dict = {roi.ROINumber: roi.ROIName for roi in ds.StructureSetROISequence}
 
         if hasattr(ds, "ROIContourSequence"):
             for contour in ds.ROIContourSequence:
@@ -170,12 +165,14 @@ def _extract_rtstruct_metadata(ds) -> dict:
                 roi_name = roi_dict.get(roi_num, "Unknown")
                 num_contours = len(getattr(contour, "ContourSequence", []))
 
-                structures.append({
-                    "roi_number": roi_num,
-                    "roi_name": roi_name,
-                    "num_contours": num_contours,
-                    "color": list(getattr(contour, "ROIDisplayColor", [])),
-                })
+                structures.append(
+                    {
+                        "roi_number": roi_num,
+                        "roi_name": roi_name,
+                        "num_contours": num_contours,
+                        "color": list(getattr(contour, "ROIDisplayColor", [])),
+                    }
+                )
 
     struct_data["structures"] = structures
     struct_data["num_structures"] = len(structures)

@@ -96,6 +96,46 @@ Calculate fluence maps from delivery data.
 }
 ```
 
+#### `check_metersetmap_status`
+Check if MetersetMap QA has been completed for a patient's treatment.
+
+```json
+{
+  "name": "check_metersetmap_status",
+  "arguments": {
+    "patient_id": "12345",
+    "output_directory": "~/pymedphys-gui-metersetmap",
+    "site_id": "optional_site_id"
+  }
+}
+```
+
+Returns:
+- `has_completed_check`: Whether a map check exists
+- `check_files`: List of existing check files with timestamps
+- `treatment_status`: Treatment delivery info from Mosaiq (if connected)
+- `needs_check`: Whether a check is needed
+- `reason`: Explanation of the status (including urgency warnings)
+
+#### `find_pending_metersetmap_checks`
+Find patients with RT Plans that need MetersetMap QA checks.
+
+```json
+{
+  "name": "find_pending_metersetmap_checks",
+  "arguments": {
+    "output_directory": "~/pymedphys-gui-metersetmap",
+    "days_threshold": 7,
+    "limit": 50
+  }
+}
+```
+
+Returns a prioritized list of pending checks:
+- **CRITICAL**: Treatment started without map check
+- **HIGH**: Ready for treatment (has TX fields), needs check
+- **NORMAL**: RT Plan imported, awaiting setup
+
 ### DICOM Tools
 
 #### `read_dicom`

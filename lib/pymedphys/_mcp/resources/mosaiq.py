@@ -409,18 +409,21 @@ async def _get_site_data(connection: Any, site_id: str) -> str:
         has_tx_fields = len(fields) > 0
         needs_review = has_rt_plan and not has_tx_fields
 
-        return json.dumps({
-            "site": site_data,
-            "prescriptions": prescriptions,
-            "fields": fields,
-            "rt_plans": rt_plans,
-            "status": {
-                "has_rt_plan": has_rt_plan,
-                "has_tx_fields": has_tx_fields,
-                "needs_review": needs_review,
-                "review_reason": "RT Plan imported but no treatment fields defined"
-                if needs_review else None,
-            },
-        })
+        return json.dumps(
+            {
+                "site": site_data,
+                "prescriptions": prescriptions,
+                "fields": fields,
+                "rt_plans": rt_plans,
+                "status": {
+                    "has_rt_plan": has_rt_plan,
+                    "has_tx_fields": has_tx_fields,
+                    "needs_review": needs_review,
+                    "review_reason": "RT Plan imported but no treatment fields defined"
+                    if needs_review
+                    else None,
+                },
+            }
+        )
     except Exception as e:
         return json.dumps({"error": f"Failed to get site data: {str(e)}"})

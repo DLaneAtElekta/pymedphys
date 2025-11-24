@@ -104,10 +104,15 @@ def _extract_rtplan_data(ds) -> dict:
             }
 
             # Get first/last control point info
-            if hasattr(beam, "ControlPointSequence") and len(beam.ControlPointSequence) > 0:
+            if (
+                hasattr(beam, "ControlPointSequence")
+                and len(beam.ControlPointSequence) > 0
+            ):
                 first_cp = beam.ControlPointSequence[0]
                 beam_data["start_gantry_angle"] = getattr(first_cp, "GantryAngle", None)
-                beam_data["start_collimator_angle"] = getattr(first_cp, "BeamLimitingDeviceAngle", None)
+                beam_data["start_collimator_angle"] = getattr(
+                    first_cp, "BeamLimitingDeviceAngle", None
+                )
 
             data["beams"].append(beam_data)
 
@@ -182,12 +187,14 @@ def _extract_rtstruct_data(ds) -> dict:
         if hasattr(ds, "ROIContourSequence"):
             for contour in ds.ROIContourSequence:
                 roi_num = getattr(contour, "ReferencedROINumber", None)
-                data["structures"].append({
-                    "roi_number": roi_num,
-                    "roi_name": roi_dict.get(roi_num, "Unknown"),
-                    "num_contours": len(getattr(contour, "ContourSequence", [])),
-                    "color": list(getattr(contour, "ROIDisplayColor", [])),
-                })
+                data["structures"].append(
+                    {
+                        "roi_number": roi_num,
+                        "roi_name": roi_dict.get(roi_num, "Unknown"),
+                        "num_contours": len(getattr(contour, "ContourSequence", [])),
+                        "color": list(getattr(contour, "ROIDisplayColor", [])),
+                    }
+                )
 
     return data
 
@@ -472,7 +479,9 @@ async def create_rtpconnect(
 
         # Create file meta information
         file_meta = FileMetaDataset()
-        file_meta.MediaStorageSOPClassUID = "1.2.840.10008.5.1.4.1.1.481.8"  # RT Ion Plan Storage
+        file_meta.MediaStorageSOPClassUID = (
+            "1.2.840.10008.5.1.4.1.1.481.8"  # RT Ion Plan Storage
+        )
         file_meta.MediaStorageSOPInstanceUID = pydicom.uid.generate_uid()
         file_meta.TransferSyntaxUID = ImplicitVRLittleEndian
 

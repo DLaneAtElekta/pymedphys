@@ -73,9 +73,7 @@ def create_server(
 
     # Store configuration
     _server_config["mosaiq_connection"] = mosaiq_connection
-    _server_config["dicom_directories"] = [
-        Path(d) for d in (dicom_directories or [])
-    ]
+    _server_config["dicom_directories"] = [Path(d) for d in (dicom_directories or [])]
     _server_config["trf_directories"] = [Path(d) for d in (trf_directories or [])]
     _server_config["working_directory"] = (
         Path(working_directory) if working_directory else Path.cwd()
@@ -251,6 +249,61 @@ def _register_tools(server: Server):
                         },
                     },
                     "required": ["source", "source_path"],
+                },
+            ),
+            Tool(
+                name="check_metersetmap_status",
+                description="Check if MetersetMap QA has been completed for a patient's treatment. "
+                "Scans the output directory for existing MetersetMap reports and compares against "
+                "treatment delivery history from Mosaiq to determine if QA is complete, pending, or overdue.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "patient_id": {
+                            "type": "string",
+                            "description": "Patient ID to check",
+                        },
+                        "output_directory": {
+                            "type": "string",
+                            "description": "Directory where MetersetMap PDF/PNG results are stored "
+                            "(e.g., ~/pymedphys-gui-metersetmap)",
+                        },
+                        "site_id": {
+                            "type": "string",
+                            "description": "Optional: Specific site ID to check",
+                        },
+                        "field_identifier": {
+                            "type": "string",
+                            "description": "Optional: Specific field identifier to check",
+                        },
+                    },
+                    "required": ["patient_id", "output_directory"],
+                },
+            ),
+            Tool(
+                name="find_pending_metersetmap_checks",
+                description="Find patients with RT Plans that need MetersetMap QA checks. "
+                "Scans Mosaiq for sites with RT Plans imported in the last N days that don't have "
+                "corresponding MetersetMap check files. Returns prioritized list by urgency.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "output_directory": {
+                            "type": "string",
+                            "description": "Directory where MetersetMap results are stored",
+                        },
+                        "days_threshold": {
+                            "type": "integer",
+                            "description": "Look for RT Plans imported within this many days",
+                            "default": 7,
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum number of results to return",
+                            "default": 50,
+                        },
+                    },
+                    "required": ["output_directory"],
                 },
             ),
             # DICOM tools
@@ -482,7 +535,11 @@ def _register_tools(server: Server):
                                     "items": {"type": "string"},
                                     "description": "Sections to include: 'demographics', 'prescriptions', "
                                     "'treatments', 'qa', 'documents'",
-                                    "default": ["demographics", "prescriptions", "treatments"],
+                                    "default": [
+                                        "demographics",
+                                        "prescriptions",
+                                        "treatments",
+                                    ],
                                 },
                             },
                             "required": ["patient_id"],
@@ -570,6 +627,16 @@ def _register_tools(server: Server):
                     **arguments,
                     mosaiq_connection=_server_config["mosaiq_connection"],
                 )
+            elif name == "check_metersetmap_status":
+                result = await analysis.check_metersetmap_status(
+                    **arguments,
+                    mosaiq_connection=_server_config["mosaiq_connection"],
+                )
+            elif name == "find_pending_metersetmap_checks":
+                result = await analysis.find_pending_metersetmap_checks(
+                    **arguments,
+                    mosaiq_connection=_server_config["mosaiq_connection"],
+                )
             elif name == "read_dicom":
                 result = await dicom.read_dicom(**arguments)
             elif name == "anonymize_dicom":
@@ -610,7 +677,9 @@ def _register_tools(server: Server):
             else:
                 result = {"error": f"Unknown tool: {name}"}
 
-            return [TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
+            return [
+                TextContent(type="text", text=json.dumps(result, indent=2, default=str))
+            ]
 
         except Exception as e:
             logger.exception(f"Error executing tool {name}")
@@ -680,7 +749,9 @@ def _register_prompts(server: Server):
         ]
 
     @server.get_prompt()
-    async def get_prompt(name: str, arguments: dict[str, str] | None) -> GetPromptResult:
+    async def get_prompt(
+        name: str, arguments: dict[str, str] | None
+    ) -> GetPromptResult:
         """Get a specific prompt template with arguments."""
         arguments = arguments or {}
 

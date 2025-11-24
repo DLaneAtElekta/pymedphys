@@ -337,7 +337,11 @@ async def get_patient_chart(
     if connection is None:
         return {"error": "No Mosaiq connection available"}
 
-    include_sections = include_sections or ["demographics", "prescriptions", "treatments"]
+    include_sections = include_sections or [
+        "demographics",
+        "prescriptions",
+        "treatments",
+    ]
 
     chart = {
         "patient_id": patient_id,
@@ -624,7 +628,9 @@ async def find_sites_needing_review(
             # Site needs review if it has RT plans but no TX fields
             if row[5] > 0 and row[6] == 0:
                 site_data["needs_review"] = True
-                site_data["review_reason"] = "RT Plan imported but no treatment fields defined"
+                site_data["review_reason"] = (
+                    "RT Plan imported but no treatment fields defined"
+                )
                 sites_needing_review.append(site_data)
             else:
                 site_data["needs_review"] = False
@@ -635,7 +641,8 @@ async def find_sites_needing_review(
             "sites_needing_review_count": len(sites_needing_review),
             "sites_ok_count": len(sites_ok),
             "recommendation": "Use the RT Viewer (pymedphys gui) to review sites with imported RT Plans"
-            if sites_needing_review else "No sites need immediate review",
+            if sites_needing_review
+            else "No sites need immediate review",
         }
 
     except Exception as e:
@@ -696,7 +703,7 @@ async def launch_rt_viewer(
             "status": "instructions",
             "message": "RT Viewer launch requires manual execution",
             "commands": [
-                f"pymedphys gui",
+                "pymedphys gui",
                 "# Then select the 'DICOM RT Visualisation' app",
                 "# Or run directly:",
                 f"streamlit run --server.port {port} "
@@ -705,7 +712,9 @@ async def launch_rt_viewer(
             "files_to_load": {
                 "dicom_directory": str(dicom_dir.resolve()),
                 "rtstruct_path": str(rtstruct.resolve()),
-                "rtdose_path": str(Path(rtdose_path).resolve()) if rtdose_path else None,
+                "rtdose_path": str(Path(rtdose_path).resolve())
+                if rtdose_path
+                else None,
             },
             "url": f"http://localhost:{port}",
             "note": "After launching, load the specified files in the RT Viewer interface",
