@@ -7,9 +7,9 @@ This shows how to read Elekta linac TRF (treatment log) files.
 
 import pymedphys
 
-print("="*70)
+print("=" * 70)
 print("PyMedPhys TRF File Reading API")
-print("="*70)
+print("=" * 70)
 
 print("""
 TRF files are binary log files from Elekta linear accelerators that record
@@ -92,7 +92,7 @@ gamma = pymedphys.gamma(
 )
 """)
 
-print("\n" + "="*70)
+print("\n" + "=" * 70)
 print("To try with real data, you need a .trf file from an Elekta linac.")
 print("Test data is available but requires network access to download.")
-print("="*70)
+print("=" * 70)
