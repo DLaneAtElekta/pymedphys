@@ -17,6 +17,12 @@ SKIPPING_CONFIG = {
         "description": "mark test as using cypress",
         "skip_otherwise": True,
     },
+    "playwright": {
+        "options": ["--run-only-playwright", "--playwright"],
+        "help": "run the playwright tests",
+        "description": "mark test as using playwright",
+        "skip_otherwise": True,
+    },
     "pydicom": {
         "options": ["--run-only-pydicom", "--pydicom"],
         "help": "run only the tests that use pydicom",
