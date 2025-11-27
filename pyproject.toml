@@ -92,6 +92,7 @@ tests = [
   "matplotlib",
   "numba",
   "Pillow",
+  "playwright",
   "psutil",
   "pydicom>=2.0.0",
   "pynetdicom",
@@ -99,6 +100,7 @@ tests = [
   "pylibjpeg-libjpeg>=1.3.2",
   "pylint",
   "pytest",
+  "pytest-playwright",
   "pytest-rerunfailures",
   "pytest-sugar",
   "python-dateutil",
@@ -181,6 +183,7 @@ all = [
     "numpy>=1.26",
     "packaging",
     "pandas>=1.0.0",
+    "playwright",
     "plotly",
     "pre-commit",
     "psutil",
@@ -192,6 +195,7 @@ all = [
     "pynetdicom",
     "pyright",
     "pytest",
+    "pytest-playwright",
     "pytest-rerunfailures",
     "pytest-sugar",
     "python-dateutil",
@@ -270,6 +274,13 @@ reportIndexIssue = false
 reportReturnType = false
 reportMissingModuleSource = false
 reportTypedDictNotRequiredAccess = false
+
+[tool.pytest.ini_options]
+# Playwright configuration
+# Use chromium browser by default, run headless
+addopts = "--browser chromium"
+# Playwright slow-mo for debugging (in ms) - uncomment to slow down tests
+# slow_mo = 100
 
 [build-system]
 requires = ["hatchling>=1.26"]
