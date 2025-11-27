@@ -155,6 +155,11 @@ mosaiq = [
     "toml",
 ]
 
+mcp = [
+    "mcp>=1.0.0",
+    "pydicom>=2.0.0",
+]
+
 propagate = [
     "ruff",
 ]
@@ -175,6 +180,7 @@ all = [
     "jupyter-book>=0.12.0,<2.0.0",
     "keyring",
     "matplotlib",
+    "mcp>=1.0.0",
     "natsort",
     "networkx",
     "numba",
