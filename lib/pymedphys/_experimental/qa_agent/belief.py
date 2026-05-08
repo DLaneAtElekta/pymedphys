@@ -9,24 +9,27 @@
 """Variational posterior over the factored QA phenotype.
 
 The belief factorises as ``q(phenotype) * q(errors | phenotype)``.
-The discrete factor is a categorical distribution over
-:class:`~pymedphys._experimental.qa_agent.phenotypes.Phenotype`. The
-continuous factor is intentionally not committed to here — a Gaussian
-per phenotype is the recommended starting point.
+The discrete factor is a categorical over `Phenotype`; the
+continuous factor is left for a follow-up step (a Gaussian per
+phenotype is the recommended starting form).
 
-Updates implement a single mean-field step against the observation
-likelihood from `ObservationModel`. This is sufficient for
-slowly-evolving QA state across fractions; richer schemes
-(particle filter, structured VI) can be slotted in behind the same
-interface.
+`BeliefUpdater` currently performs the closed-form Bayesian update
+of the discrete factor only, using log-sum-exp for numerical
+stability. The continuous-error sufficient statistics are passed
+through unchanged. Callers that need richer schemes (particle
+filter, structured VI) can subclass without changing the agent
+plumbing.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from math import exp, log
 
 from .observation_model import Observation, ObservationModel
-from .phenotypes import Phenotype
+from .phenotypes import Phenotype, PhenotypeState
+
+_LOG_FLOOR = -1e9
 
 
 def _uniform_prior() -> dict[Phenotype, float]:
@@ -44,9 +47,7 @@ class Belief:
     that fills in the variational form.
     """
 
-    phenotype_probs: dict[Phenotype, float] = field(
-        default_factory=_uniform_prior
-    )
+    phenotype_probs: dict[Phenotype, float] = field(default_factory=_uniform_prior)
     error_params: dict[Phenotype, object] = field(default_factory=dict)
 
     def map_phenotype(self) -> Phenotype:
@@ -54,8 +55,6 @@ class Belief:
 
     def entropy_nats(self) -> float:
         """Shannon entropy of the discrete phenotype factor (nats)."""
-
-        from math import log
 
         total = 0.0
         for p in self.phenotype_probs.values():
@@ -67,16 +66,38 @@ class Belief:
 class BeliefUpdater:
     """Single-step Bayesian update of `Belief` from an `Observation`.
 
-    Stubbed. The reference implementation should:
-      1. For each phenotype, compute ``log p(o | s) + log p(s)``
-         using `ObservationModel.log_likelihood`.
-      2. Normalise to obtain the posterior over phenotypes.
-      3. Update per-phenotype continuous-error sufficient statistics
-         (e.g. Kalman update for a Gaussian factor).
+    Implements the discrete-factor update only. For each phenotype:
+
+        log_post(p) = log_prior(p) + log p(o | p)
+
+    then normalised via log-sum-exp.
     """
 
     def __init__(self, observation_model: ObservationModel) -> None:
         self._observation_model = observation_model
 
     def update(self, prior: Belief, observation: Observation) -> Belief:
-        raise NotImplementedError("BeliefUpdater.update is stubbed")
+        log_post: dict[Phenotype, float] = {}
+        for phenotype in Phenotype:
+            prior_p = prior.phenotype_probs.get(phenotype, 0.0)
+            log_prior = log(prior_p) if prior_p > 0.0 else _LOG_FLOOR
+            log_lik = self._observation_model.log_likelihood(
+                observation, PhenotypeState(phenotype=phenotype)
+            )
+            log_post[phenotype] = log_prior + log_lik
+
+        max_log = max(log_post.values())
+        unnormalised = {p: exp(lp - max_log) for p, lp in log_post.items()}
+        z = sum(unnormalised.values())
+        if z <= 0.0:
+            # Degenerate case: fall back to prior to avoid NaNs.
+            return Belief(
+                phenotype_probs=dict(prior.phenotype_probs),
+                error_params=dict(prior.error_params),
+            )
+
+        posterior = {p: v / z for p, v in unnormalised.items()}
+        return Belief(
+            phenotype_probs=posterior,
+            error_params=dict(prior.error_params),
+        )
