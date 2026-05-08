@@ -25,8 +25,8 @@ from pymedphys._experimental.qa_agent import (
     BeliefUpdater,
     Observation,
     ObservationModel,
-    Phenotype,
-    PhenotypeState,
+    FaultMode,
+    LatentState,
     Policy,
     QAAgent,
 )
@@ -37,20 +37,20 @@ from pymedphys._experimental.qa_agent import (
 # ---------------------------------------------------------------------------
 
 
-def test_phenotype_state_defaults_to_nominal():
-    state = PhenotypeState()
-    assert state.phenotype is Phenotype.NOMINAL
+def test_latent_state_defaults_to_nominal():
+    state = LatentState()
+    assert state.fault_mode is FaultMode.NOMINAL
     assert state.errors.mlc_leaf_bias_mm == 0.0
 
 
 def test_belief_uniform_prior_sums_to_one():
     belief = Belief()
-    assert isclose(sum(belief.phenotype_probs.values()), 1.0)
-    assert set(belief.phenotype_probs) == set(Phenotype)
+    assert isclose(sum(belief.fault_mode_probs.values()), 1.0)
+    assert set(belief.fault_mode_probs) == set(FaultMode)
 
 
 def test_belief_entropy_is_log_n_at_uniform_prior():
-    assert isclose(Belief().entropy_nats(), log(len(Phenotype)))
+    assert isclose(Belief().entropy_nats(), log(len(FaultMode)))
 
 
 def test_action_enum_covers_minimum_clinical_decisions():
@@ -76,26 +76,22 @@ def test_observation_allows_missing_channels():
 
 def test_log_likelihood_zero_for_no_channels():
     om = ObservationModel()
-    assert om.log_likelihood(Observation(), PhenotypeState()) == 0.0
+    assert om.log_likelihood(Observation(), LatentState()) == 0.0
 
 
-def test_log_likelihood_higher_for_matching_phenotype():
+def test_log_likelihood_higher_for_matching_fault_mode():
     om = ObservationModel()
     obs = Observation(gamma_pass_rate=98.0)
-    nominal = om.log_likelihood(obs, PhenotypeState(phenotype=Phenotype.NOMINAL))
-    corrupt = om.log_likelihood(
-        obs, PhenotypeState(phenotype=Phenotype.PLAN_CORRUPTION)
-    )
+    nominal = om.log_likelihood(obs, LatentState(fault_mode=FaultMode.NOMINAL))
+    corrupt = om.log_likelihood(obs, LatentState(fault_mode=FaultMode.PLAN_CORRUPTION))
     assert nominal > corrupt
 
 
 def test_plan_hash_failure_strongly_implicates_corruption():
     om = ObservationModel()
     obs = Observation(plan_hash_ok=False)
-    nominal = om.log_likelihood(obs, PhenotypeState(phenotype=Phenotype.NOMINAL))
-    corrupt = om.log_likelihood(
-        obs, PhenotypeState(phenotype=Phenotype.PLAN_CORRUPTION)
-    )
+    nominal = om.log_likelihood(obs, LatentState(fault_mode=FaultMode.NOMINAL))
+    corrupt = om.log_likelihood(obs, LatentState(fault_mode=FaultMode.PLAN_CORRUPTION))
     assert corrupt > nominal
 
 
@@ -115,14 +111,14 @@ def test_belief_update_normalises_to_one():
     om = ObservationModel()
     bu = BeliefUpdater(om)
     posterior = bu.update(Belief(), Observation(gamma_pass_rate=98.0))
-    assert isclose(sum(posterior.phenotype_probs.values()), 1.0)
+    assert isclose(sum(posterior.fault_mode_probs.values()), 1.0)
 
 
 def test_high_gamma_drives_posterior_to_nominal():
     om = ObservationModel()
     bu = BeliefUpdater(om)
     posterior = bu.update(Belief(), Observation(gamma_pass_rate=98.0))
-    assert posterior.map_phenotype() is Phenotype.NOMINAL
+    assert posterior.map_fault_mode() is FaultMode.NOMINAL
 
 
 def test_low_gamma_with_large_setup_residual_implicates_setup_error():
@@ -130,14 +126,14 @@ def test_low_gamma_with_large_setup_residual_implicates_setup_error():
     bu = BeliefUpdater(om)
     obs = Observation(gamma_pass_rate=85.0, setup_residual_mm=5.0)
     posterior = bu.update(Belief(), obs)
-    assert posterior.map_phenotype() is Phenotype.SETUP_ERROR
+    assert posterior.map_fault_mode() is FaultMode.SETUP_ERROR
 
 
 def test_plan_hash_false_drives_posterior_to_corruption():
     om = ObservationModel()
     bu = BeliefUpdater(om)
     posterior = bu.update(Belief(), Observation(plan_hash_ok=False))
-    assert posterior.map_phenotype() is Phenotype.PLAN_CORRUPTION
+    assert posterior.map_fault_mode() is FaultMode.PLAN_CORRUPTION
 
 
 def test_observation_reduces_belief_entropy():
@@ -155,14 +151,14 @@ def test_observation_reduces_belief_entropy():
 
 def test_policy_recommends_approve_when_confidently_nominal():
     confident_nominal = Belief(
-        phenotype_probs={
-            Phenotype.NOMINAL: 0.97,
-            Phenotype.MLC_DEGRADED: 0.005,
-            Phenotype.OUTPUT_DRIFT: 0.005,
-            Phenotype.SETUP_ERROR: 0.005,
-            Phenotype.GATING_FAULT: 0.005,
-            Phenotype.COLLISION_RISK: 0.005,
-            Phenotype.PLAN_CORRUPTION: 0.005,
+        fault_mode_probs={
+            FaultMode.NOMINAL: 0.97,
+            FaultMode.MLC_DEGRADED: 0.005,
+            FaultMode.OUTPUT_DRIFT: 0.005,
+            FaultMode.SETUP_ERROR: 0.005,
+            FaultMode.GATING_FAULT: 0.005,
+            FaultMode.COLLISION_RISK: 0.005,
+            FaultMode.PLAN_CORRUPTION: 0.005,
         }
     )
     assert Policy().select(confident_nominal).action is Action.APPROVE_FRACTION
@@ -170,14 +166,14 @@ def test_policy_recommends_approve_when_confidently_nominal():
 
 def test_policy_avoids_approve_when_corruption_is_likely():
     likely_corrupt = Belief(
-        phenotype_probs={
-            Phenotype.NOMINAL: 0.05,
-            Phenotype.MLC_DEGRADED: 0.05,
-            Phenotype.OUTPUT_DRIFT: 0.05,
-            Phenotype.SETUP_ERROR: 0.05,
-            Phenotype.GATING_FAULT: 0.05,
-            Phenotype.COLLISION_RISK: 0.05,
-            Phenotype.PLAN_CORRUPTION: 0.70,
+        fault_mode_probs={
+            FaultMode.NOMINAL: 0.05,
+            FaultMode.MLC_DEGRADED: 0.05,
+            FaultMode.OUTPUT_DRIFT: 0.05,
+            FaultMode.SETUP_ERROR: 0.05,
+            FaultMode.GATING_FAULT: 0.05,
+            FaultMode.COLLISION_RISK: 0.05,
+            FaultMode.PLAN_CORRUPTION: 0.70,
         }
     )
     assert Policy().select(likely_corrupt).action is not Action.APPROVE_FRACTION
@@ -227,7 +223,7 @@ def test_agent_step_returns_recommendation_for_nominal_observation():
             "plan_hash_ok": True,
         }
     )
-    assert result.posterior.map_phenotype() is Phenotype.NOMINAL
+    assert result.posterior.map_fault_mode() is FaultMode.NOMINAL
     assert result.recommendation.action is Action.APPROVE_FRACTION
     # Alternatives include all actions for auditability.
     assert {d.action for d in result.alternatives} == set(Action)
@@ -254,7 +250,7 @@ def test_agent_belief_persists_across_steps():
     first = agent.step({"gamma_pass_rate": 85.0, "setup_residual_mm": 5.0})
     second_prior_entropy = agent.belief.entropy_nats()
     # Entropy after one informative observation must be below the uniform prior.
-    assert second_prior_entropy < log(len(Phenotype))
+    assert second_prior_entropy < log(len(FaultMode))
     assert first.posterior is agent.belief
 
 

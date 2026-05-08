@@ -24,7 +24,7 @@ import pytest
 from pymedphys._experimental.qa_agent import (
     Action,
     BeliefUpdater,
-    Phenotype,
+    FaultMode,
     Policy,
     QAAgent,
 )
@@ -174,7 +174,7 @@ def test_agent_with_mosaiq_encoder_flags_setup_error_fraction():
             "gamma_pass_rate": 85.0,  # consistent with setup error
         }
     )
-    assert result.posterior.map_phenotype() is Phenotype.SETUP_ERROR
+    assert result.posterior.map_fault_mode() is FaultMode.SETUP_ERROR
     assert result.recommendation.action is not Action.APPROVE_FRACTION
 
 
@@ -186,7 +186,7 @@ def test_agent_with_dose_drift_flags_output_drift():
         policy=Policy(),
     )
     result = agent.step({"sit_set_id": 1, "fraction": 3})
-    assert result.posterior.map_phenotype() is Phenotype.OUTPUT_DRIFT
+    assert result.posterior.map_fault_mode() is FaultMode.OUTPUT_DRIFT
 
 
 # ---------------------------------------------------------------------------

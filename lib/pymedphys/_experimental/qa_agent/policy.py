@@ -12,11 +12,11 @@ EFE for action ``a`` decomposes into:
 
 * **Pragmatic value** — expected mismatch between predicted outcomes
   and the agent's prior preferences ``C(o)``. Encoded here as the
-  expected per-phenotype outcome cost of taking ``a``: approving
+  expected per-fault-mode outcome cost of taking ``a``: approving
   while truly non-nominal is expensive; replanning while truly
   nominal is wasteful.
 * **Epistemic value** — expected information gain about the
-  phenotype. Encoded here as ``-info_factor[a] * H[q(s)]``: actions
+  fault mode. Encoded here as ``-info_factor[a] * H[q(s)]``: actions
   that re-observe the system (remeasurement, recalibration) reduce
   belief entropy, while approve/escalate do not.
 
@@ -38,7 +38,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from .belief import Belief
-from .phenotypes import Phenotype
+from .fault_modes import FaultMode
 
 
 class Action(str, Enum):
@@ -80,74 +80,74 @@ def default_info_factor() -> dict[Action, float]:
     }
 
 
-def default_outcome_cost() -> dict[Action, dict[Phenotype, float]]:
-    """Per-action, per-phenotype pragmatic cost.
+def default_outcome_cost() -> dict[Action, dict[FaultMode, float]]:
+    """Per-action, per-fault-mode pragmatic cost.
 
-    Approving a non-nominal phenotype is the dominant patient-safety
+    Approving a non-nominal fault mode is the dominant patient-safety
     cost; intervening when truly nominal is a smaller workflow cost.
     Tune against local clinical preferences.
     """
 
     return {
         Action.APPROVE_FRACTION: {
-            Phenotype.NOMINAL: 0.0,
-            Phenotype.MLC_DEGRADED: 5.0,
-            Phenotype.OUTPUT_DRIFT: 4.0,
-            Phenotype.SETUP_ERROR: 6.0,
-            Phenotype.GATING_FAULT: 7.0,
-            Phenotype.COLLISION_RISK: 10.0,
-            Phenotype.PLAN_CORRUPTION: 12.0,
+            FaultMode.NOMINAL: 0.0,
+            FaultMode.MLC_DEGRADED: 5.0,
+            FaultMode.OUTPUT_DRIFT: 4.0,
+            FaultMode.SETUP_ERROR: 6.0,
+            FaultMode.GATING_FAULT: 7.0,
+            FaultMode.COLLISION_RISK: 10.0,
+            FaultMode.PLAN_CORRUPTION: 12.0,
         },
         Action.HOLD_FOR_REVIEW: {
-            Phenotype.NOMINAL: 1.0,
-            Phenotype.MLC_DEGRADED: 1.0,
-            Phenotype.OUTPUT_DRIFT: 1.0,
-            Phenotype.SETUP_ERROR: 1.0,
-            Phenotype.GATING_FAULT: 1.0,
-            Phenotype.COLLISION_RISK: 1.0,
-            Phenotype.PLAN_CORRUPTION: 1.0,
+            FaultMode.NOMINAL: 1.0,
+            FaultMode.MLC_DEGRADED: 1.0,
+            FaultMode.OUTPUT_DRIFT: 1.0,
+            FaultMode.SETUP_ERROR: 1.0,
+            FaultMode.GATING_FAULT: 1.0,
+            FaultMode.COLLISION_RISK: 1.0,
+            FaultMode.PLAN_CORRUPTION: 1.0,
         },
         Action.REQUEST_REMEASUREMENT: {
-            Phenotype.NOMINAL: 1.5,
-            Phenotype.MLC_DEGRADED: 1.5,
-            Phenotype.OUTPUT_DRIFT: 1.5,
-            Phenotype.SETUP_ERROR: 1.5,
-            Phenotype.GATING_FAULT: 1.5,
-            Phenotype.COLLISION_RISK: 1.5,
-            Phenotype.PLAN_CORRUPTION: 1.5,
+            FaultMode.NOMINAL: 1.5,
+            FaultMode.MLC_DEGRADED: 1.5,
+            FaultMode.OUTPUT_DRIFT: 1.5,
+            FaultMode.SETUP_ERROR: 1.5,
+            FaultMode.GATING_FAULT: 1.5,
+            FaultMode.COLLISION_RISK: 1.5,
+            FaultMode.PLAN_CORRUPTION: 1.5,
         },
         Action.TRIGGER_RECALIBRATION: {
-            Phenotype.NOMINAL: 3.0,
-            Phenotype.MLC_DEGRADED: 1.5,
-            Phenotype.OUTPUT_DRIFT: 0.5,
-            Phenotype.SETUP_ERROR: 3.0,
-            Phenotype.GATING_FAULT: 2.0,
-            Phenotype.COLLISION_RISK: 3.0,
-            Phenotype.PLAN_CORRUPTION: 3.0,
+            FaultMode.NOMINAL: 3.0,
+            FaultMode.MLC_DEGRADED: 1.5,
+            FaultMode.OUTPUT_DRIFT: 0.5,
+            FaultMode.SETUP_ERROR: 3.0,
+            FaultMode.GATING_FAULT: 2.0,
+            FaultMode.COLLISION_RISK: 3.0,
+            FaultMode.PLAN_CORRUPTION: 3.0,
         },
         Action.REPLAN: {
-            Phenotype.NOMINAL: 5.0,
-            Phenotype.MLC_DEGRADED: 3.0,
-            Phenotype.OUTPUT_DRIFT: 4.0,
-            Phenotype.SETUP_ERROR: 4.0,
-            Phenotype.GATING_FAULT: 4.0,
-            Phenotype.COLLISION_RISK: 3.0,
-            Phenotype.PLAN_CORRUPTION: 1.0,
+            FaultMode.NOMINAL: 5.0,
+            FaultMode.MLC_DEGRADED: 3.0,
+            FaultMode.OUTPUT_DRIFT: 4.0,
+            FaultMode.SETUP_ERROR: 4.0,
+            FaultMode.GATING_FAULT: 4.0,
+            FaultMode.COLLISION_RISK: 3.0,
+            FaultMode.PLAN_CORRUPTION: 1.0,
         },
         Action.ESCALATE: {
-            Phenotype.NOMINAL: 2.0,
-            Phenotype.MLC_DEGRADED: 1.5,
-            Phenotype.OUTPUT_DRIFT: 1.5,
-            Phenotype.SETUP_ERROR: 1.5,
-            Phenotype.GATING_FAULT: 1.5,
-            Phenotype.COLLISION_RISK: 1.0,
-            Phenotype.PLAN_CORRUPTION: 1.0,
+            FaultMode.NOMINAL: 2.0,
+            FaultMode.MLC_DEGRADED: 1.5,
+            FaultMode.OUTPUT_DRIFT: 1.5,
+            FaultMode.SETUP_ERROR: 1.5,
+            FaultMode.GATING_FAULT: 1.5,
+            FaultMode.COLLISION_RISK: 1.0,
+            FaultMode.PLAN_CORRUPTION: 1.0,
         },
     }
 
 
 class Policy:
-    """EFE-based policy over the discrete phenotype factor.
+    """EFE-based policy over the discrete fault-mode factor.
 
     Pragmatic term: ``E_q(s)[outcome_cost[a][s]]``.
     Epistemic term: ``-info_factor[a] * H[q(s)]`` (negative cost,
@@ -157,7 +157,7 @@ class Policy:
     def __init__(
         self,
         info_factor: dict[Action, float] | None = None,
-        outcome_cost: dict[Action, dict[Phenotype, float]] | None = None,
+        outcome_cost: dict[Action, dict[FaultMode, float]] | None = None,
         actions: tuple[Action, ...] = tuple(Action),
     ) -> None:
         self._info_factor = info_factor or default_info_factor()
@@ -170,7 +170,7 @@ class Policy:
         for action in self._actions:
             cost_table = self._outcome_cost[action]
             pragmatic = sum(
-                belief.phenotype_probs.get(p, 0.0) * cost_table[p] for p in Phenotype
+                belief.fault_mode_probs.get(p, 0.0) * cost_table[p] for p in FaultMode
             )
             epistemic = -self._info_factor[action] * entropy
             results.append(

@@ -21,7 +21,7 @@ import pytest
 from pymedphys._experimental.qa_agent import (
     Action,
     BeliefUpdater,
-    Phenotype,
+    FaultMode,
     Policy,
     QAAgent,
 )
@@ -132,7 +132,7 @@ def test_agent_with_trf_residual_flags_mlc_degraded():
         policy=Policy(),
     )
     result = agent.step({"trf_path": "ignored"})
-    assert result.posterior.map_phenotype() is Phenotype.MLC_DEGRADED
+    assert result.posterior.map_fault_mode() is FaultMode.MLC_DEGRADED
     assert result.recommendation.action is not Action.APPROVE_FRACTION
 
 
@@ -158,5 +158,5 @@ def test_agent_with_clean_trf_residual_recommends_approve():
             "plan_hash_ok": True,
         }
     )
-    assert result.posterior.map_phenotype() is Phenotype.NOMINAL
+    assert result.posterior.map_fault_mode() is FaultMode.NOMINAL
     assert result.recommendation.action is Action.APPROVE_FRACTION

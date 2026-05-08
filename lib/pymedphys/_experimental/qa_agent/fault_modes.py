@@ -6,12 +6,14 @@
 
 #     http://www.apache.org/licenses/LICENSE-2.0
 
-"""QA phenotypes: factored hidden state for the patient-QA agent.
+"""Fault modes and latent state for the patient-QA agent.
 
-The phenotype splits into a discrete failure mode and a small vector
-of continuous error parameters. This factoring keeps inference
-tractable while retaining enough dosimetric resolution to drive
-decisions.
+The latent state factorises into a discrete fault mode plus a
+small vector of continuous error parameters. This factoring keeps
+inference tractable while retaining enough dosimetric resolution
+to drive decisions. Discrete fault modes are the categorical
+classification target ("which failure is occurring"); continuous
+errors quantify "how much".
 """
 
 from __future__ import annotations
@@ -20,8 +22,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 
-class Phenotype(str, Enum):
-    """Discrete top-level QA phenotype.
+class FaultMode(str, Enum):
+    """Discrete top-level QA fault mode.
 
     Membership is exhaustive over the failure modes the agent is
     expected to discriminate. Add new modes only when an observation
@@ -53,8 +55,8 @@ class ContinuousErrors:
 
 
 @dataclass
-class PhenotypeState:
-    """Factored hidden state: discrete phenotype + continuous errors."""
+class LatentState:
+    """Factored hidden state: discrete fault mode + continuous errors."""
 
-    phenotype: Phenotype = Phenotype.NOMINAL
+    fault_mode: FaultMode = FaultMode.NOMINAL
     errors: ContinuousErrors = field(default_factory=ContinuousErrors)

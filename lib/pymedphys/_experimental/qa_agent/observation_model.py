@@ -15,14 +15,14 @@ consumes. `ObservationModel` is responsible for two things:
    default implementation is intentionally a permissive
    dict-to-dataclass mapping; richer encoders should subclass and
    plug in pymedphys' `_gamma`, `_trf`, `_icom`, `_dicom` modules.
-2. *Likelihood* — score ``log p(observation | phenotype)`` as a sum
+2. *Likelihood* — score ``log p(observation | fault_mode)`` as a sum
    of independent per-channel terms (Gaussian for continuous
    channels, Bernoulli for the plan-hash check). Channels left as
    ``None`` contribute zero, so partial QA workflows are
    first-class.
 
-Conditioning is on the discrete phenotype only; continuous error
-parameters in `PhenotypeState` are ignored at this stage and will
+Conditioning is on the discrete fault mode only; continuous error
+parameters in `LatentState` are ignored at this stage and will
 be wired in once the variational form for the continuous factor is
 chosen.
 """
@@ -33,7 +33,7 @@ from dataclasses import dataclass
 from math import log, pi
 from typing import Any
 
-from .phenotypes import Phenotype, PhenotypeState
+from .fault_modes import FaultMode, LatentState
 
 _LOG_2PI = log(2.0 * pi)
 
@@ -68,20 +68,20 @@ class BernoulliParams:
 
 @dataclass(frozen=True)
 class LikelihoodParams:
-    """Per-phenotype likelihood parameters for each channel.
+    """Per-fault-mode likelihood parameters for each channel.
 
-    Each inner dict must be exhaustive over `Phenotype`. Defaults
+    Each inner dict must be exhaustive over `FaultMode`. Defaults
     are illustrative starting points calibrated against typical
     clinical tolerances (TG-218-style); real deployments should
     refit them from local data.
     """
 
-    gamma_pass_rate: dict[Phenotype, GaussianParams]
-    mean_mlc_residual_mm: dict[Phenotype, GaussianParams]
-    output_ratio: dict[Phenotype, GaussianParams]
-    setup_residual_mm: dict[Phenotype, GaussianParams]
-    gating_dropouts: dict[Phenotype, GaussianParams]
-    plan_hash_ok: dict[Phenotype, BernoulliParams]
+    gamma_pass_rate: dict[FaultMode, GaussianParams]
+    mean_mlc_residual_mm: dict[FaultMode, GaussianParams]
+    output_ratio: dict[FaultMode, GaussianParams]
+    setup_residual_mm: dict[FaultMode, GaussianParams]
+    gating_dropouts: dict[FaultMode, GaussianParams]
+    plan_hash_ok: dict[FaultMode, BernoulliParams]
 
 
 def default_likelihood_params() -> LikelihoodParams:
@@ -89,58 +89,58 @@ def default_likelihood_params() -> LikelihoodParams:
 
     return LikelihoodParams(
         gamma_pass_rate={
-            Phenotype.NOMINAL: GaussianParams(98.0, 1.5),
-            Phenotype.MLC_DEGRADED: GaussianParams(88.0, 4.0),
-            Phenotype.OUTPUT_DRIFT: GaussianParams(92.0, 3.0),
-            Phenotype.SETUP_ERROR: GaussianParams(85.0, 5.0),
-            Phenotype.GATING_FAULT: GaussianParams(80.0, 6.0),
-            Phenotype.COLLISION_RISK: GaussianParams(95.0, 3.0),
-            Phenotype.PLAN_CORRUPTION: GaussianParams(70.0, 10.0),
+            FaultMode.NOMINAL: GaussianParams(98.0, 1.5),
+            FaultMode.MLC_DEGRADED: GaussianParams(88.0, 4.0),
+            FaultMode.OUTPUT_DRIFT: GaussianParams(92.0, 3.0),
+            FaultMode.SETUP_ERROR: GaussianParams(85.0, 5.0),
+            FaultMode.GATING_FAULT: GaussianParams(80.0, 6.0),
+            FaultMode.COLLISION_RISK: GaussianParams(95.0, 3.0),
+            FaultMode.PLAN_CORRUPTION: GaussianParams(70.0, 10.0),
         },
         mean_mlc_residual_mm={
-            Phenotype.NOMINAL: GaussianParams(0.2, 0.1),
-            Phenotype.MLC_DEGRADED: GaussianParams(1.5, 0.5),
-            Phenotype.OUTPUT_DRIFT: GaussianParams(0.2, 0.1),
-            Phenotype.SETUP_ERROR: GaussianParams(0.2, 0.1),
-            Phenotype.GATING_FAULT: GaussianParams(0.3, 0.2),
-            Phenotype.COLLISION_RISK: GaussianParams(0.2, 0.1),
-            Phenotype.PLAN_CORRUPTION: GaussianParams(0.5, 0.3),
+            FaultMode.NOMINAL: GaussianParams(0.2, 0.1),
+            FaultMode.MLC_DEGRADED: GaussianParams(1.5, 0.5),
+            FaultMode.OUTPUT_DRIFT: GaussianParams(0.2, 0.1),
+            FaultMode.SETUP_ERROR: GaussianParams(0.2, 0.1),
+            FaultMode.GATING_FAULT: GaussianParams(0.3, 0.2),
+            FaultMode.COLLISION_RISK: GaussianParams(0.2, 0.1),
+            FaultMode.PLAN_CORRUPTION: GaussianParams(0.5, 0.3),
         },
         output_ratio={
-            Phenotype.NOMINAL: GaussianParams(1.000, 0.005),
-            Phenotype.MLC_DEGRADED: GaussianParams(1.000, 0.005),
-            Phenotype.OUTPUT_DRIFT: GaussianParams(1.020, 0.010),
-            Phenotype.SETUP_ERROR: GaussianParams(1.000, 0.005),
-            Phenotype.GATING_FAULT: GaussianParams(1.000, 0.010),
-            Phenotype.COLLISION_RISK: GaussianParams(1.000, 0.005),
-            Phenotype.PLAN_CORRUPTION: GaussianParams(1.000, 0.020),
+            FaultMode.NOMINAL: GaussianParams(1.000, 0.005),
+            FaultMode.MLC_DEGRADED: GaussianParams(1.000, 0.005),
+            FaultMode.OUTPUT_DRIFT: GaussianParams(1.020, 0.010),
+            FaultMode.SETUP_ERROR: GaussianParams(1.000, 0.005),
+            FaultMode.GATING_FAULT: GaussianParams(1.000, 0.010),
+            FaultMode.COLLISION_RISK: GaussianParams(1.000, 0.005),
+            FaultMode.PLAN_CORRUPTION: GaussianParams(1.000, 0.020),
         },
         setup_residual_mm={
-            Phenotype.NOMINAL: GaussianParams(0.5, 0.3),
-            Phenotype.MLC_DEGRADED: GaussianParams(0.5, 0.3),
-            Phenotype.OUTPUT_DRIFT: GaussianParams(0.5, 0.3),
-            Phenotype.SETUP_ERROR: GaussianParams(5.0, 2.0),
-            Phenotype.GATING_FAULT: GaussianParams(1.0, 0.5),
-            Phenotype.COLLISION_RISK: GaussianParams(1.0, 0.5),
-            Phenotype.PLAN_CORRUPTION: GaussianParams(0.5, 0.3),
+            FaultMode.NOMINAL: GaussianParams(0.5, 0.3),
+            FaultMode.MLC_DEGRADED: GaussianParams(0.5, 0.3),
+            FaultMode.OUTPUT_DRIFT: GaussianParams(0.5, 0.3),
+            FaultMode.SETUP_ERROR: GaussianParams(5.0, 2.0),
+            FaultMode.GATING_FAULT: GaussianParams(1.0, 0.5),
+            FaultMode.COLLISION_RISK: GaussianParams(1.0, 0.5),
+            FaultMode.PLAN_CORRUPTION: GaussianParams(0.5, 0.3),
         },
         gating_dropouts={
-            Phenotype.NOMINAL: GaussianParams(0.0, 0.5),
-            Phenotype.MLC_DEGRADED: GaussianParams(0.0, 0.5),
-            Phenotype.OUTPUT_DRIFT: GaussianParams(0.0, 0.5),
-            Phenotype.SETUP_ERROR: GaussianParams(0.0, 0.5),
-            Phenotype.GATING_FAULT: GaussianParams(8.0, 4.0),
-            Phenotype.COLLISION_RISK: GaussianParams(0.0, 0.5),
-            Phenotype.PLAN_CORRUPTION: GaussianParams(0.0, 0.5),
+            FaultMode.NOMINAL: GaussianParams(0.0, 0.5),
+            FaultMode.MLC_DEGRADED: GaussianParams(0.0, 0.5),
+            FaultMode.OUTPUT_DRIFT: GaussianParams(0.0, 0.5),
+            FaultMode.SETUP_ERROR: GaussianParams(0.0, 0.5),
+            FaultMode.GATING_FAULT: GaussianParams(8.0, 4.0),
+            FaultMode.COLLISION_RISK: GaussianParams(0.0, 0.5),
+            FaultMode.PLAN_CORRUPTION: GaussianParams(0.0, 0.5),
         },
         plan_hash_ok={
-            Phenotype.NOMINAL: BernoulliParams(0.999),
-            Phenotype.MLC_DEGRADED: BernoulliParams(0.99),
-            Phenotype.OUTPUT_DRIFT: BernoulliParams(0.99),
-            Phenotype.SETUP_ERROR: BernoulliParams(0.99),
-            Phenotype.GATING_FAULT: BernoulliParams(0.99),
-            Phenotype.COLLISION_RISK: BernoulliParams(0.99),
-            Phenotype.PLAN_CORRUPTION: BernoulliParams(0.05),
+            FaultMode.NOMINAL: BernoulliParams(0.999),
+            FaultMode.MLC_DEGRADED: BernoulliParams(0.99),
+            FaultMode.OUTPUT_DRIFT: BernoulliParams(0.99),
+            FaultMode.SETUP_ERROR: BernoulliParams(0.99),
+            FaultMode.GATING_FAULT: BernoulliParams(0.99),
+            FaultMode.COLLISION_RISK: BernoulliParams(0.99),
+            FaultMode.PLAN_CORRUPTION: BernoulliParams(0.05),
         },
     )
 
@@ -151,7 +151,7 @@ def _gaussian_log(x: float, params: GaussianParams) -> float:
 
 
 def _bernoulli_log(observed: bool, p_true: float) -> float:
-    # Clip to avoid log(0) when a phenotype assigns probability 0/1.
+    # Clip to avoid log(0) when a fault mode assigns probability 0/1.
     p = min(max(p_true, 1e-9), 1.0 - 1e-9)
     return log(p) if observed else log(1.0 - p)
 
@@ -183,13 +183,13 @@ class ObservationModel:
             plan_hash_ok=raw.get("plan_hash_ok"),
         )
 
-    def log_likelihood(self, observation: Observation, state: PhenotypeState) -> float:
-        """``log p(observation | phenotype)`` as a sum over channels.
+    def log_likelihood(self, observation: Observation, state: LatentState) -> float:
+        """``log p(observation | fault_mode)`` as a sum over channels.
 
         Continuous error parameters in `state` are not yet used.
         """
 
-        p = state.phenotype
+        p = state.fault_mode
         total = 0.0
 
         if observation.gamma_pass_rate is not None:
