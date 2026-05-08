@@ -34,6 +34,7 @@ is unit-testable without a real TRF file.
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from typing import Any, Callable, Tuple
 
 from .observation_model import LikelihoodParams, Observation, ObservationModel
@@ -70,19 +71,14 @@ class TrfObservationModel(ObservationModel):
     def encode(self, raw: dict[str, Any]) -> Observation:
         base = super().encode(raw)
 
-        mean_mlc_residual_mm = base.mean_mlc_residual_mm
         trf_path = raw.get("trf_path")
-        if mean_mlc_residual_mm is None and trf_path is not None:
-            mean_mlc_residual_mm = self._compute_mlc_residual(trf_path)
+        if base.mean_mlc_residual_mm is not None or trf_path is None:
+            return base
 
-        return Observation(
-            gamma_pass_rate=base.gamma_pass_rate,
-            mean_mlc_residual_mm=mean_mlc_residual_mm,
-            output_ratio=base.output_ratio,
-            setup_residual_mm=base.setup_residual_mm,
-            gating_dropouts=base.gating_dropouts,
-            plan_hash_ok=base.plan_hash_ok,
-        )
+        residual = self._compute_mlc_residual(trf_path)
+        if residual is None:
+            return base
+        return replace(base, mean_mlc_residual_mm=residual)
 
     def _compute_mlc_residual(self, trf_path: Any) -> float | None:
         _, table = self._read_trf_fn(trf_path)

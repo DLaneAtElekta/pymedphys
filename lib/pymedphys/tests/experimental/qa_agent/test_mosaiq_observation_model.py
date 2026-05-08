@@ -30,6 +30,7 @@ from pymedphys._experimental.qa_agent import (
 )
 from pymedphys._experimental.qa_agent.mosaiq_observation_model import (
     MosaiqObservationModel,
+    MosaiqQueries,
 )
 
 
@@ -70,16 +71,19 @@ def _fake_delivered_dose(_connection, _sit_set_id, start, end):
     return 0.0
 
 
-def _make_encoder(**overrides):
-    kwargs = dict(
-        connection=object(),
-        sessions_fn=_fake_sessions,
-        offsets_fn=_fake_offsets_with_setup_error,
-        delivered_dose_fn=_fake_delivered_dose,
-        planned_dose_fn=_fake_planned_dose,
+def _make_queries(**overrides) -> MosaiqQueries:
+    return MosaiqQueries(
+        sessions=overrides.pop("sessions", _fake_sessions),
+        offsets=overrides.pop("offsets", _fake_offsets_with_setup_error),
+        delivered_dose=overrides.pop("delivered_dose", _fake_delivered_dose),
+        planned_dose=overrides.pop("planned_dose", _fake_planned_dose),
     )
-    kwargs.update(overrides)
-    return MosaiqObservationModel(**kwargs)
+
+
+def _make_encoder(**query_overrides) -> MosaiqObservationModel:
+    return MosaiqObservationModel(
+        connection=object(), queries=_make_queries(**query_overrides)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -139,7 +143,7 @@ def test_output_ratio_picks_up_drift_in_specific_fraction():
 
 
 def test_output_ratio_is_none_when_planned_dose_missing():
-    obs = _make_encoder(planned_dose_fn=lambda *_: 0.0).encode(
+    obs = _make_encoder(planned_dose=lambda *_: 0.0).encode(
         {"sit_set_id": 1, "fraction": 1}
     )
     assert obs.output_ratio is None

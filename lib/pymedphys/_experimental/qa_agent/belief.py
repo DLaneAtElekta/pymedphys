@@ -26,6 +26,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from math import exp, log
 
+from pymedphys._imports import scipy
+
 from .fault_modes import FaultMode, LatentState
 from .observation_model import Observation, ObservationModel
 
@@ -86,17 +88,8 @@ class BeliefUpdater:
             )
             log_post[fault_mode] = log_prior + log_lik
 
-        max_log = max(log_post.values())
-        unnormalised = {p: exp(lp - max_log) for p, lp in log_post.items()}
-        z = sum(unnormalised.values())
-        if z <= 0.0:
-            # Degenerate case: fall back to prior to avoid NaNs.
-            return Belief(
-                fault_mode_probs=dict(prior.fault_mode_probs),
-                error_params=dict(prior.error_params),
-            )
-
-        posterior = {p: v / z for p, v in unnormalised.items()}
+        log_z = float(scipy.special.logsumexp(list(log_post.values())))  # pylint: disable=no-member
+        posterior = {p: exp(lp - log_z) for p, lp in log_post.items()}
         return Belief(
             fault_mode_probs=posterior,
             error_params=dict(prior.error_params),

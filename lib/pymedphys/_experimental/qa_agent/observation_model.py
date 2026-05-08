@@ -37,6 +37,14 @@ from .fault_modes import FaultMode, LatentState
 
 _LOG_2PI = log(2.0 * pi)
 
+_GAUSSIAN_CHANNELS: tuple[str, ...] = (
+    "gamma_pass_rate",
+    "mean_mlc_residual_mm",
+    "output_ratio",
+    "setup_residual_mm",
+    "gating_dropouts",
+)
+
 
 @dataclass(frozen=True)
 class Observation:
@@ -84,65 +92,62 @@ class LikelihoodParams:
     plan_hash_ok: dict[FaultMode, BernoulliParams]
 
 
-def default_likelihood_params() -> LikelihoodParams:
-    """Illustrative defaults; replace with locally-fitted values."""
-
-    return LikelihoodParams(
-        gamma_pass_rate={
-            FaultMode.NOMINAL: GaussianParams(98.0, 1.5),
-            FaultMode.MLC_DEGRADED: GaussianParams(88.0, 4.0),
-            FaultMode.OUTPUT_DRIFT: GaussianParams(92.0, 3.0),
-            FaultMode.SETUP_ERROR: GaussianParams(85.0, 5.0),
-            FaultMode.GATING_FAULT: GaussianParams(80.0, 6.0),
-            FaultMode.COLLISION_RISK: GaussianParams(95.0, 3.0),
-            FaultMode.PLAN_CORRUPTION: GaussianParams(70.0, 10.0),
-        },
-        mean_mlc_residual_mm={
-            FaultMode.NOMINAL: GaussianParams(0.2, 0.1),
-            FaultMode.MLC_DEGRADED: GaussianParams(1.5, 0.5),
-            FaultMode.OUTPUT_DRIFT: GaussianParams(0.2, 0.1),
-            FaultMode.SETUP_ERROR: GaussianParams(0.2, 0.1),
-            FaultMode.GATING_FAULT: GaussianParams(0.3, 0.2),
-            FaultMode.COLLISION_RISK: GaussianParams(0.2, 0.1),
-            FaultMode.PLAN_CORRUPTION: GaussianParams(0.5, 0.3),
-        },
-        output_ratio={
-            FaultMode.NOMINAL: GaussianParams(1.000, 0.005),
-            FaultMode.MLC_DEGRADED: GaussianParams(1.000, 0.005),
-            FaultMode.OUTPUT_DRIFT: GaussianParams(1.020, 0.010),
-            FaultMode.SETUP_ERROR: GaussianParams(1.000, 0.005),
-            FaultMode.GATING_FAULT: GaussianParams(1.000, 0.010),
-            FaultMode.COLLISION_RISK: GaussianParams(1.000, 0.005),
-            FaultMode.PLAN_CORRUPTION: GaussianParams(1.000, 0.020),
-        },
-        setup_residual_mm={
-            FaultMode.NOMINAL: GaussianParams(0.5, 0.3),
-            FaultMode.MLC_DEGRADED: GaussianParams(0.5, 0.3),
-            FaultMode.OUTPUT_DRIFT: GaussianParams(0.5, 0.3),
-            FaultMode.SETUP_ERROR: GaussianParams(5.0, 2.0),
-            FaultMode.GATING_FAULT: GaussianParams(1.0, 0.5),
-            FaultMode.COLLISION_RISK: GaussianParams(1.0, 0.5),
-            FaultMode.PLAN_CORRUPTION: GaussianParams(0.5, 0.3),
-        },
-        gating_dropouts={
-            FaultMode.NOMINAL: GaussianParams(0.0, 0.5),
-            FaultMode.MLC_DEGRADED: GaussianParams(0.0, 0.5),
-            FaultMode.OUTPUT_DRIFT: GaussianParams(0.0, 0.5),
-            FaultMode.SETUP_ERROR: GaussianParams(0.0, 0.5),
-            FaultMode.GATING_FAULT: GaussianParams(8.0, 4.0),
-            FaultMode.COLLISION_RISK: GaussianParams(0.0, 0.5),
-            FaultMode.PLAN_CORRUPTION: GaussianParams(0.0, 0.5),
-        },
-        plan_hash_ok={
-            FaultMode.NOMINAL: BernoulliParams(0.999),
-            FaultMode.MLC_DEGRADED: BernoulliParams(0.99),
-            FaultMode.OUTPUT_DRIFT: BernoulliParams(0.99),
-            FaultMode.SETUP_ERROR: BernoulliParams(0.99),
-            FaultMode.GATING_FAULT: BernoulliParams(0.99),
-            FaultMode.COLLISION_RISK: BernoulliParams(0.99),
-            FaultMode.PLAN_CORRUPTION: BernoulliParams(0.05),
-        },
-    )
+DEFAULT_LIKELIHOOD_PARAMS = LikelihoodParams(
+    gamma_pass_rate={
+        FaultMode.NOMINAL: GaussianParams(98.0, 1.5),
+        FaultMode.MLC_DEGRADED: GaussianParams(88.0, 4.0),
+        FaultMode.OUTPUT_DRIFT: GaussianParams(92.0, 3.0),
+        FaultMode.SETUP_ERROR: GaussianParams(85.0, 5.0),
+        FaultMode.GATING_FAULT: GaussianParams(80.0, 6.0),
+        FaultMode.COLLISION_RISK: GaussianParams(95.0, 3.0),
+        FaultMode.PLAN_CORRUPTION: GaussianParams(70.0, 10.0),
+    },
+    mean_mlc_residual_mm={
+        FaultMode.NOMINAL: GaussianParams(0.2, 0.1),
+        FaultMode.MLC_DEGRADED: GaussianParams(1.5, 0.5),
+        FaultMode.OUTPUT_DRIFT: GaussianParams(0.2, 0.1),
+        FaultMode.SETUP_ERROR: GaussianParams(0.2, 0.1),
+        FaultMode.GATING_FAULT: GaussianParams(0.3, 0.2),
+        FaultMode.COLLISION_RISK: GaussianParams(0.2, 0.1),
+        FaultMode.PLAN_CORRUPTION: GaussianParams(0.5, 0.3),
+    },
+    output_ratio={
+        FaultMode.NOMINAL: GaussianParams(1.000, 0.005),
+        FaultMode.MLC_DEGRADED: GaussianParams(1.000, 0.005),
+        FaultMode.OUTPUT_DRIFT: GaussianParams(1.020, 0.010),
+        FaultMode.SETUP_ERROR: GaussianParams(1.000, 0.005),
+        FaultMode.GATING_FAULT: GaussianParams(1.000, 0.010),
+        FaultMode.COLLISION_RISK: GaussianParams(1.000, 0.005),
+        FaultMode.PLAN_CORRUPTION: GaussianParams(1.000, 0.020),
+    },
+    setup_residual_mm={
+        FaultMode.NOMINAL: GaussianParams(0.5, 0.3),
+        FaultMode.MLC_DEGRADED: GaussianParams(0.5, 0.3),
+        FaultMode.OUTPUT_DRIFT: GaussianParams(0.5, 0.3),
+        FaultMode.SETUP_ERROR: GaussianParams(5.0, 2.0),
+        FaultMode.GATING_FAULT: GaussianParams(1.0, 0.5),
+        FaultMode.COLLISION_RISK: GaussianParams(1.0, 0.5),
+        FaultMode.PLAN_CORRUPTION: GaussianParams(0.5, 0.3),
+    },
+    gating_dropouts={
+        FaultMode.NOMINAL: GaussianParams(0.0, 0.5),
+        FaultMode.MLC_DEGRADED: GaussianParams(0.0, 0.5),
+        FaultMode.OUTPUT_DRIFT: GaussianParams(0.0, 0.5),
+        FaultMode.SETUP_ERROR: GaussianParams(0.0, 0.5),
+        FaultMode.GATING_FAULT: GaussianParams(8.0, 4.0),
+        FaultMode.COLLISION_RISK: GaussianParams(0.0, 0.5),
+        FaultMode.PLAN_CORRUPTION: GaussianParams(0.0, 0.5),
+    },
+    plan_hash_ok={
+        FaultMode.NOMINAL: BernoulliParams(0.999),
+        FaultMode.MLC_DEGRADED: BernoulliParams(0.99),
+        FaultMode.OUTPUT_DRIFT: BernoulliParams(0.99),
+        FaultMode.SETUP_ERROR: BernoulliParams(0.99),
+        FaultMode.GATING_FAULT: BernoulliParams(0.99),
+        FaultMode.COLLISION_RISK: BernoulliParams(0.99),
+        FaultMode.PLAN_CORRUPTION: BernoulliParams(0.05),
+    },
+)
 
 
 def _gaussian_log(x: float, params: GaussianParams) -> float:
@@ -160,7 +165,7 @@ class ObservationModel:
     """Encodes raw inputs into `Observation` and scores likelihoods."""
 
     def __init__(self, params: LikelihoodParams | None = None) -> None:
-        self._params = params or default_likelihood_params()
+        self._params = params if params is not None else DEFAULT_LIKELIHOOD_PARAMS
 
     @property
     def params(self) -> LikelihoodParams:
@@ -189,36 +194,17 @@ class ObservationModel:
         Continuous error parameters in `state` are not yet used.
         """
 
-        p = state.fault_mode
+        fm = state.fault_mode
         total = 0.0
 
-        if observation.gamma_pass_rate is not None:
-            total += _gaussian_log(
-                observation.gamma_pass_rate, self._params.gamma_pass_rate[p]
-            )
-        if observation.mean_mlc_residual_mm is not None:
-            total += _gaussian_log(
-                observation.mean_mlc_residual_mm,
-                self._params.mean_mlc_residual_mm[p],
-            )
-        if observation.output_ratio is not None:
-            total += _gaussian_log(
-                observation.output_ratio, self._params.output_ratio[p]
-            )
-        if observation.setup_residual_mm is not None:
-            total += _gaussian_log(
-                observation.setup_residual_mm,
-                self._params.setup_residual_mm[p],
-            )
-        if observation.gating_dropouts is not None:
-            total += _gaussian_log(
-                float(observation.gating_dropouts),
-                self._params.gating_dropouts[p],
-            )
+        for channel in _GAUSSIAN_CHANNELS:
+            value = getattr(observation, channel)
+            if value is not None:
+                total += _gaussian_log(float(value), getattr(self._params, channel)[fm])
+
         if observation.plan_hash_ok is not None:
             total += _bernoulli_log(
-                observation.plan_hash_ok,
-                self._params.plan_hash_ok[p].p_true,
+                observation.plan_hash_ok, self._params.plan_hash_ok[fm].p_true
             )
 
         return total
