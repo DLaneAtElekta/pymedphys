@@ -51,7 +51,7 @@ class Belief:
     error_params: dict[FaultMode, object] = field(default_factory=dict)
 
     def map_fault_mode(self) -> FaultMode:
-        return max(self.fault_mode_probs, key=self.fault_mode_probs.get)
+        return max(self.fault_mode_probs, key=lambda k: self.fault_mode_probs[k])
 
     def entropy_nats(self) -> float:
         """Shannon entropy of the discrete fault-mode factor (nats)."""
