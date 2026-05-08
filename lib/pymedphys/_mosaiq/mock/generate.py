@@ -174,6 +174,9 @@ def create_mock_treatment_sites(patient_ident_df=None):
     # choose the number of fractions
     site_df["Fractions"] = 10
 
+    # prescribed dose per fraction (cGy)
+    site_df["Dose_Tx"] = 200.0
+
     # the site notes contain the choice of protocol
     site_df["Notes"] = "nal"
 
@@ -384,6 +387,15 @@ def create_mock_treatment_sessions(site_df=None, txfield_df=None):
         fractions = site_rec["Fractions"]
         protocol = re.match("([a-z]*)", site_rec["Notes"]).groups()[0]
 
+        # split the per-fraction prescribed dose evenly across the site's
+        # treatment fields so a nominal fraction sums to Site.Dose_Tx
+        site_field_count = int((txfield_df["SIT_SET_ID"] == sit_set_id).sum())
+        per_field_dose = (
+            float(site_rec.get("Dose_Tx", 0.0)) / site_field_count
+            if site_field_count
+            else 0.0
+        )
+
         # pick a date for beginning the treatment, as a workday number in the year
         session_workday = 51
 
@@ -394,7 +406,9 @@ def create_mock_treatment_sessions(site_df=None, txfield_df=None):
         offset_count = 0
         for n in range(fractions):
             # determine the session date for the current workday
-            session_date_str = f"2021-W{session_workday//5+1}-{session_workday%5+1}"
+            session_date_str = (
+                f"2021-W{session_workday // 5 + 1}-{session_workday % 5 + 1}"
+            )
             session_date = datetime.strptime(session_date_str, "%Y-W%W-%w")
 
             # and add the appointment time
@@ -422,7 +436,9 @@ def create_mock_treatment_sessions(site_df=None, txfield_df=None):
             for fld_id, txfield_rec in txfield_df.iterrows():
                 if txfield_rec["SIT_SET_ID"] == sit_set_id:
                     session_time += timedelta(minutes=1)
-                    dose_hst_recs.append((pat_id1, sit_id, fld_id, session_time))
+                    dose_hst_recs.append(
+                        (pat_id1, sit_id, fld_id, session_time, per_field_dose)
+                    )
 
             # choose whether to create a localization offset
             if protocol == "nal" and not created_localization_yet:
@@ -447,7 +463,8 @@ def create_mock_treatment_sessions(site_df=None, txfield_df=None):
 
     # now populate tables
     dose_hst_df = pd.DataFrame(
-        dose_hst_recs, columns=["Pat_ID1", "SIT_ID", "FLD_ID", "Tx_DtTm"]
+        dose_hst_recs,
+        columns=["Pat_ID1", "SIT_ID", "FLD_ID", "Tx_DtTm", "Dose_Tx_Act"],
     )
     dataframe_to_sql(
         dose_hst_df,
@@ -458,6 +475,7 @@ def create_mock_treatment_sessions(site_df=None, txfield_df=None):
             "SIT_ID": sqlalchemy.types.Integer(),
             "FLD_ID": sqlalchemy.types.Integer(),
             "Tx_DtTm": sqlalchemy.types.DateTime(),
+            "Dose_Tx_Act": sqlalchemy.types.Numeric(precision=8, scale=2),
         },
     )
 

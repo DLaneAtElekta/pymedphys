@@ -8,11 +8,11 @@
 
 """Tests for the Mosaiq-backed observation encoder.
 
-The unit tests use injected fakes for `sessions_for_site` /
-`session_offsets_for_site` so they run without an MSSQL
-connection. The integration test (under the ``mosaiqdb`` marker)
-exercises the real query path against the mock Mosaiq DB and is
-skipped unless the marker is enabled.
+The unit tests use injected fakes for every database lookup so
+they run without an MSSQL connection. The integration test
+(under the ``mosaiqdb`` marker) exercises the real query path
+against the mock Mosaiq DB and is skipped unless the marker is
+enabled.
 """
 
 from __future__ import annotations
@@ -51,38 +51,54 @@ def _fake_offsets_with_setup_error(_connection, _sit_set_id):
     yield (3, None)
 
 
+_PLANNED_PER_FRACTION = 200.0
+_DELIVERED_BY_FRACTION = {
+    1: 200.0,  # ratio = 1.000
+    2: 200.0,  # ratio = 1.000 even though setup is bad
+    3: 204.0,  # ratio = 1.020 — output drift
+}
+
+
+def _fake_planned_dose(_connection, _sit_set_id):
+    return _PLANNED_PER_FRACTION
+
+
+def _fake_delivered_dose(_connection, _sit_set_id, start, end):
+    for fraction, s, e in _fake_sessions(None, None):
+        if s == start and e == end:
+            return _DELIVERED_BY_FRACTION.get(fraction, 0.0)
+    return 0.0
+
+
+def _make_encoder(**overrides):
+    kwargs = dict(
+        connection=object(),
+        sessions_fn=_fake_sessions,
+        offsets_fn=_fake_offsets_with_setup_error,
+        delivered_dose_fn=_fake_delivered_dose,
+        planned_dose_fn=_fake_planned_dose,
+    )
+    kwargs.update(overrides)
+    return MosaiqObservationModel(**kwargs)
+
+
 # ---------------------------------------------------------------------------
-# Encoder
+# setup_residual_mm
 # ---------------------------------------------------------------------------
 
 
 def test_mosaiq_encoder_pulls_setup_residual_for_requested_fraction():
-    om = MosaiqObservationModel(
-        connection=object(),
-        sessions_fn=_fake_sessions,
-        offsets_fn=_fake_offsets_with_setup_error,
-    )
-    obs = om.encode({"sit_set_id": 1, "fraction": 2})
+    obs = _make_encoder().encode({"sit_set_id": 1, "fraction": 2})
     assert obs.setup_residual_mm == pytest.approx(5.0, rel=1e-6)
 
 
 def test_mosaiq_encoder_returns_none_when_offset_missing_for_fraction():
-    om = MosaiqObservationModel(
-        connection=object(),
-        sessions_fn=_fake_sessions,
-        offsets_fn=_fake_offsets_with_setup_error,
-    )
-    obs = om.encode({"sit_set_id": 1, "fraction": 3})
+    obs = _make_encoder().encode({"sit_set_id": 1, "fraction": 3})
     assert obs.setup_residual_mm is None
 
 
 def test_mosaiq_encoder_passes_through_external_channels():
-    om = MosaiqObservationModel(
-        connection=object(),
-        sessions_fn=_fake_sessions,
-        offsets_fn=_fake_offsets_with_setup_error,
-    )
-    obs = om.encode(
+    obs = _make_encoder().encode(
         {
             "sit_set_id": 1,
             "fraction": 1,
@@ -96,23 +112,47 @@ def test_mosaiq_encoder_passes_through_external_channels():
 
 
 def test_caller_supplied_setup_residual_overrides_mosaiq_lookup():
-    om = MosaiqObservationModel(
-        connection=object(),
-        sessions_fn=_fake_sessions,
-        offsets_fn=_fake_offsets_with_setup_error,
+    obs = _make_encoder().encode(
+        {"sit_set_id": 1, "fraction": 2, "setup_residual_mm": 0.1}
     )
-    obs = om.encode({"sit_set_id": 1, "fraction": 2, "setup_residual_mm": 0.1})
     assert obs.setup_residual_mm == 0.1
 
 
 def test_unknown_fraction_returns_no_setup_residual():
-    om = MosaiqObservationModel(
-        connection=object(),
-        sessions_fn=_fake_sessions,
-        offsets_fn=_fake_offsets_with_setup_error,
-    )
-    obs = om.encode({"sit_set_id": 1, "fraction": 99})
+    obs = _make_encoder().encode({"sit_set_id": 1, "fraction": 99})
     assert obs.setup_residual_mm is None
+
+
+# ---------------------------------------------------------------------------
+# output_ratio (delivered / planned per fraction)
+# ---------------------------------------------------------------------------
+
+
+def test_output_ratio_is_one_for_nominal_fraction():
+    obs = _make_encoder().encode({"sit_set_id": 1, "fraction": 1})
+    assert obs.output_ratio == pytest.approx(1.0, rel=1e-6)
+
+
+def test_output_ratio_picks_up_drift_in_specific_fraction():
+    obs = _make_encoder().encode({"sit_set_id": 1, "fraction": 3})
+    assert obs.output_ratio == pytest.approx(1.02, rel=1e-6)
+
+
+def test_output_ratio_is_none_when_planned_dose_missing():
+    obs = _make_encoder(planned_dose_fn=lambda *_: 0.0).encode(
+        {"sit_set_id": 1, "fraction": 1}
+    )
+    assert obs.output_ratio is None
+
+
+def test_output_ratio_is_none_for_unknown_fraction():
+    obs = _make_encoder().encode({"sit_set_id": 1, "fraction": 99})
+    assert obs.output_ratio is None
+
+
+def test_caller_supplied_output_ratio_overrides_mosaiq_lookup():
+    obs = _make_encoder().encode({"sit_set_id": 1, "fraction": 3, "output_ratio": 1.0})
+    assert obs.output_ratio == 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -121,11 +161,7 @@ def test_unknown_fraction_returns_no_setup_residual():
 
 
 def test_agent_with_mosaiq_encoder_flags_setup_error_fraction():
-    om = MosaiqObservationModel(
-        connection=object(),
-        sessions_fn=_fake_sessions,
-        offsets_fn=_fake_offsets_with_setup_error,
-    )
+    om = _make_encoder()
     agent = QAAgent(
         observation_model=om,
         belief_updater=BeliefUpdater(om),
@@ -140,6 +176,17 @@ def test_agent_with_mosaiq_encoder_flags_setup_error_fraction():
     )
     assert result.posterior.map_phenotype() is Phenotype.SETUP_ERROR
     assert result.recommendation.action is not Action.APPROVE_FRACTION
+
+
+def test_agent_with_dose_drift_flags_output_drift():
+    om = _make_encoder()
+    agent = QAAgent(
+        observation_model=om,
+        belief_updater=BeliefUpdater(om),
+        policy=Policy(),
+    )
+    result = agent.step({"sit_set_id": 1, "fraction": 3})
+    assert result.posterior.map_phenotype() is Phenotype.OUTPUT_DRIFT
 
 
 # ---------------------------------------------------------------------------
@@ -167,3 +214,7 @@ def test_mosaiq_encoder_against_mock_db():
     # Mock data writes a fixed offset of (-1, 0, 1) for every session.
     expected_magnitude = (1.0 + 0.0 + 1.0) ** 0.5
     assert obs.setup_residual_mm == pytest.approx(expected_magnitude, rel=1e-6)
+
+    # The mock generator splits Site.Dose_Tx evenly across the site's fields
+    # so a nominal fraction's delivered dose sums back to the prescription.
+    assert obs.output_ratio == pytest.approx(1.0, rel=1e-6)
