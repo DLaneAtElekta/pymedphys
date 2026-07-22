@@ -16,6 +16,7 @@ import dicompylercore
 import dicompylercore.dicomparser as dicomparser
 import dicompylercore.dvh as dvh
 import dicompylercore.dvhcalc as dvhcalc
+import flask
 import github
 import imageio.v2 as imageio
 import interpolation

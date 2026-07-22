@@ -156,6 +156,13 @@ mosaiq = [
     "toml",
 ]
 
+dicomweb = [
+    "flask>=2.0.0",
+    "pydicom>=2.0.0",
+    "pymssql",
+    "pandas>=1.0.0",
+]
+
 propagate = [
     "ruff",
 ]
@@ -171,6 +178,7 @@ all = [
     "dbfread",
     "dicompyler-core",
     "doc8",
+    "flask>=2.0.0",
     "imageio[tifffile]",
     "ipython>=7.31.1",
     "jupyter-book>=0.12.0,<2.0.0",
@@ -226,7 +234,7 @@ docs  = ["docs"]
 user  = ["user"]
 
 # Optional aggregations if you want “full” exports in CI, etc.
-full  = ["user", "tests", "docs", "doctests", "cli", "dicom", "icom", "mosaiq"]
+full  = ["user", "tests", "docs", "doctests", "cli", "dicom", "icom", "mosaiq", "dicomweb"]
 
 [dependency-groups]
 dev = [
