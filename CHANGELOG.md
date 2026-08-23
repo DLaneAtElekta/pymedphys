@@ -9,6 +9,18 @@ This project adheres to
 
 ## Unreleased
 
+### New features and enhancements
+
+- A new, beta, site-side boundary for federated learning, at
+  `pymedphys.beta.federated`. It provides the aperture that enforces and logs
+  what may leave a clinic, the framework-agnostic `SiteTrainer` contract that
+  a local trainer implements, an in-process FedAvg loop for exercising both
+  without a server, and structure-name canonicalisation onto a shared TG-263
+  vocabulary. Hosting an aggregation server is deliberately out of scope --
+  PyMedPhys ships the client half. This is Stage 0 of the roadmap documented
+  under `docs/federated/`; run `python -m pymedphys._federated.demo` to see
+  it work. NumPy is the only requirement, and the API is expected to churn.
+
 ### News around this release
 
 - PyMedPhys no longer has a Discourse group. Forum-like conversation and
