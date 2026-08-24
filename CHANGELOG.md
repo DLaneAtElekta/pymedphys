@@ -13,7 +13,7 @@ This project adheres to
 
 - A new, beta, clinic-side boundary for federated learning, at
   `pymedphys.beta.federated`. It provides the aperture that enforces and logs
-  what may leave a clinic, the framework-agnostic `SiteTrainer` contract that
+  what may leave a clinic, the framework-agnostic `ClinicTrainer` contract that
   a local trainer implements, an in-process FedAvg loop for exercising both
   without a server, and structure-name canonicalisation onto a shared TG-263
   vocabulary. Hosting an aggregation server is deliberately out of scope --

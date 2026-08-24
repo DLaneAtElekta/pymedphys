@@ -19,18 +19,18 @@ radiotherapy it is overwhelmingly a naming and geometry problem::
 
     Parotid_L   vs   L Parotid   vs   PAROTID LT   vs   Lt_Parotid_gland
 
-If sites silently disagree, training does not crash. It produces a worse model
+If clinics silently disagree, training does not crash. It produces a worse model
 and a plausible loss curve, which is far more expensive than a crash.
 
 A mapping file therefore has two parts, and they are hashed separately:
 
 ``vocabulary``
-    The shared target list. Every participating site must hold the same one,
-    so its hash is part of a site's compatibility key.
+    The shared target list. Every participating clinic must hold the same one,
+    so its hash is part of a clinic's compatibility key.
 ``aliases``
-    The site's own local names for those targets. Every site's alias table
+    The clinic's own local names for those targets. Every clinic's alias table
     legitimately differs, so its hash is recorded for provenance and audit but
-    is *not* compared between sites.
+    is *not* compared between clinics.
 
 This split is a deliberate departure from hashing the mapping file as a whole:
 a whole-file hash could never match across two clinics, since differing local
@@ -161,7 +161,7 @@ class StructureVocabulary:
 
 @dataclasses.dataclass(frozen=True)
 class StructureMapping:
-    """A shared vocabulary plus one site's local alias table."""
+    """A shared vocabulary plus one clinic's local alias table."""
 
     vocabulary: StructureVocabulary
     aliases: Mapping[str, tuple[str, ...]] = dataclasses.field(default_factory=dict)
@@ -199,13 +199,13 @@ class StructureMapping:
 
     @property
     def vocabulary_sha256(self) -> str:
-        """The hash every participating site must agree on."""
+        """The hash every participating clinic must agree on."""
 
         return self.vocabulary.sha256
 
     @property
     def alias_table_sha256(self) -> str:
-        """The hash of this site's local aliases, for provenance only."""
+        """The hash of this clinic's local aliases, for provenance only."""
 
         canonical = json.dumps(
             {key: sorted(value) for key, value in sorted(self.aliases.items())},
@@ -217,7 +217,7 @@ class StructureMapping:
 
     @property
     def structure_keys(self) -> tuple[str, ...]:
-        """The canonical names, sorted, ready for a :class:`SiteManifest`."""
+        """The canonical names, sorted, ready for a :class:`ClinicManifest`."""
 
         return self.vocabulary.structures
 
@@ -263,7 +263,7 @@ class StructureMapping:
         return mapped
 
     def manifest_fields(self) -> dict[str, Any]:
-        """The fields a :class:`~pymedphys._federated.protocol.SiteManifest` needs."""
+        """The fields a :class:`~pymedphys._federated.protocol.ClinicManifest` needs."""
 
         return {
             "structure_keys": self.structure_keys,
