@@ -22,13 +22,13 @@ version = "2026-01"
 structures = ["Brainstem", "Parotid_L", "Parotid_R", "SpinalCord"]
 """
 
-SITE_A_ALIASES = """
+CLINIC_A_ALIASES = """
 [aliases]
 Parotid_L = ["Lt_Parotid_gland"]
 SpinalCord = ["Cord"]
 """
 
-SITE_B_ALIASES = """
+CLINIC_B_ALIASES = """
 [aliases]
 Parotid_R = ["RT PAROTID GLAND"]
 Brainstem = ["Brain Stem"]
@@ -88,25 +88,25 @@ def test_vocabulary_rejects_names_that_collide_when_normalised():
         tg263.StructureVocabulary(version="1", structures=("Parotid_L", "L Parotid"))
 
 
-def test_two_sites_share_a_vocabulary_hash_but_not_an_alias_hash(tmp_path):
-    site_a = tg263.StructureMapping.from_toml_file(
-        _write(tmp_path, "a.toml", VOCABULARY + SITE_A_ALIASES)
+def test_two_clinics_share_a_vocabulary_hash_but_not_an_alias_hash(tmp_path):
+    clinic_a = tg263.StructureMapping.from_toml_file(
+        _write(tmp_path, "a.toml", VOCABULARY + CLINIC_A_ALIASES)
     )
-    site_b = tg263.StructureMapping.from_toml_file(
-        _write(tmp_path, "b.toml", VOCABULARY + SITE_B_ALIASES)
+    clinic_b = tg263.StructureMapping.from_toml_file(
+        _write(tmp_path, "b.toml", VOCABULARY + CLINIC_B_ALIASES)
     )
 
     # This is the whole point of splitting the file: local names differ, the
     # shared target list does not.
-    assert site_a.vocabulary_sha256 == site_b.vocabulary_sha256
-    assert site_a.alias_table_sha256 != site_b.alias_table_sha256
+    assert clinic_a.vocabulary_sha256 == clinic_b.vocabulary_sha256
+    assert clinic_a.alias_table_sha256 != clinic_b.alias_table_sha256
 
 
 def test_vocabulary_hash_is_insensitive_to_file_formatting(tmp_path):
-    reformatted = VOCABULARY.replace(", ", ",\n    ") + "\n\n" + SITE_A_ALIASES
+    reformatted = VOCABULARY.replace(", ", ",\n    ") + "\n\n" + CLINIC_A_ALIASES
 
     original = tg263.StructureMapping.from_toml_file(
-        _write(tmp_path, "a.toml", VOCABULARY + SITE_A_ALIASES)
+        _write(tmp_path, "a.toml", VOCABULARY + CLINIC_A_ALIASES)
     )
     formatted = tg263.StructureMapping.from_toml_file(
         _write(tmp_path, "b.toml", reformatted)
@@ -118,7 +118,7 @@ def test_vocabulary_hash_is_insensitive_to_file_formatting(tmp_path):
 
 def test_canonicalise_uses_the_vocabulary_then_the_aliases(tmp_path):
     mapping = tg263.StructureMapping.from_toml_file(
-        _write(tmp_path, "a.toml", VOCABULARY + SITE_A_ALIASES)
+        _write(tmp_path, "a.toml", VOCABULARY + CLINIC_A_ALIASES)
     )
 
     assert mapping.canonicalise("PAROTID LT") == "Parotid_L"
@@ -128,7 +128,7 @@ def test_canonicalise_uses_the_vocabulary_then_the_aliases(tmp_path):
 
 def test_an_unmapped_structure_is_an_error_not_a_silent_drop(tmp_path):
     mapping = tg263.StructureMapping.from_toml_file(
-        _write(tmp_path, "a.toml", VOCABULARY + SITE_A_ALIASES)
+        _write(tmp_path, "a.toml", VOCABULARY + CLINIC_A_ALIASES)
     )
 
     with pytest.raises(tg263.UnmappedStructure):
@@ -137,7 +137,7 @@ def test_an_unmapped_structure_is_an_error_not_a_silent_drop(tmp_path):
 
 def test_canonicalise_all_reports_every_failure_at_once(tmp_path):
     mapping = tg263.StructureMapping.from_toml_file(
-        _write(tmp_path, "a.toml", VOCABULARY + SITE_A_ALIASES)
+        _write(tmp_path, "a.toml", VOCABULARY + CLINIC_A_ALIASES)
     )
 
     with pytest.raises(tg263.UnmappedStructure) as error:
@@ -166,9 +166,9 @@ def test_an_alias_must_target_the_vocabulary():
         tg263.StructureMapping(vocabulary=vocabulary, aliases={"Mandible": ("Jaw",)})
 
 
-def test_manifest_fields_are_ready_for_a_site_manifest(tmp_path):
+def test_manifest_fields_are_ready_for_a_clinic_manifest(tmp_path):
     mapping = tg263.StructureMapping.from_toml_file(
-        _write(tmp_path, "a.toml", VOCABULARY + SITE_A_ALIASES)
+        _write(tmp_path, "a.toml", VOCABULARY + CLINIC_A_ALIASES)
     )
 
     fields = mapping.manifest_fields()

@@ -16,7 +16,7 @@
 in a federation.
 
 Nothing in this module imports a deep learning framework or a federated
-learning framework. It is NumPy in and NumPy out, so that a site trainer can
+learning framework. It is NumPy in and NumPy out, so that a clinic trainer can
 be exercised end to end in a unit test with no server running.
 """
 
@@ -33,42 +33,42 @@ _SHA256_LENGTH = 64
 
 
 class ManifestError(ValueError):
-    """Raised when a :class:`SiteManifest` is internally inconsistent."""
+    """Raised when a :class:`ClinicManifest` is internally inconsistent."""
 
 
 @dataclasses.dataclass(frozen=True)
-class SiteManifest:
-    """A site's declaration of the representation it will train on.
+class ClinicManifest:
+    """A clinic's declaration of the representation it will train on.
 
-    Every field other than ``site_id`` and ``notes`` contributes to
-    :attr:`compatibility_key`. Two sites whose keys differ are not training on
+    Every field other than ``clinic_id`` and ``notes`` contributes to
+    :attr:`compatibility_key`. Two clinics whose keys differ are not training on
     the same thing, whatever their loss curves suggest.
 
     Parameters
     ----------
-    site_id
+    clinic_id
         Free text label for the clinic. Deliberately excluded from the
-        compatibility key -- sites are meant to differ here.
+        compatibility key -- clinics are meant to differ here.
     grid_shape
         Shape of the canonical voxel grid, for example ``(128, 128, 128)``.
     voxel_spacing_mm
         Spacing of that grid in millimetres, one entry per axis of
         ``grid_shape``.
     structure_keys
-        The canonical (TG-263) structure names the site will present, sorted
+        The canonical (TG-263) structure names the clinic will present, sorted
         and without duplicates.
     structure_vocabulary_sha256
-        SHA-256 of the *shared* canonical vocabulary the site maps its local
+        SHA-256 of the *shared* canonical vocabulary the clinic maps its local
         structure names onto. See :mod:`pymedphys._dicom.structure.tg263`.
     alias_table_sha256
-        SHA-256 of the site's own, local alias table. Recorded for provenance
+        SHA-256 of the clinic's own, local alias table. Recorded for provenance
         and audit; deliberately *not* part of the compatibility key, because
-        every site's alias table legitimately differs.
+        every clinic's alias table legitimately differs.
     notes
         Free text. Not hashed.
     """
 
-    site_id: str
+    clinic_id: str
     grid_shape: tuple[int, ...]
     voxel_spacing_mm: tuple[float, ...]
     structure_keys: tuple[str, ...]
@@ -85,8 +85,8 @@ class SiteManifest:
             self, "structure_keys", tuple(str(x) for x in self.structure_keys)
         )
 
-        if not self.site_id:
-            raise ManifestError("A site manifest requires a non-empty `site_id`.")
+        if not self.clinic_id:
+            raise ManifestError("A clinic manifest requires a non-empty `clinic_id`.")
 
         if not self.grid_shape:
             raise ManifestError("`grid_shape` must have at least one axis.")
@@ -127,7 +127,7 @@ class SiteManifest:
 
     @property
     def compatibility_fields(self) -> dict[str, Any]:
-        """The subset of the manifest that every site must agree on."""
+        """The subset of the manifest that every clinic must agree on."""
 
         return {
             "grid_shape": list(self.grid_shape),
@@ -174,7 +174,7 @@ def _validate_sha256(name: str, value: str):
 
 @dataclasses.dataclass(frozen=True)
 class FitResult:
-    """What a site returns from a round of local training.
+    """What a clinic returns from a round of local training.
 
     This is the object that crosses the clinic boundary, so it is deliberately
     small: an array per shared parameter, a cohort size for weighting, and
@@ -192,7 +192,7 @@ class FitResult:
 
 @dataclasses.dataclass(frozen=True)
 class EvalResult:
-    """What a site returns from a round of local evaluation."""
+    """What a clinic returns from a round of local evaluation."""
 
     loss: float
     num_examples: int
@@ -204,7 +204,7 @@ class EvalResult:
 
 
 @runtime_checkable
-class SiteTrainer(Protocol):
+class ClinicTrainer(Protocol):
     """The six methods a clinic implements.
 
     Implementations own their data loading, their model, and their optimiser.
@@ -214,8 +214,8 @@ class SiteTrainer(Protocol):
     bypassing the aperture is a visible code change rather than an omission.
     """
 
-    def manifest(self) -> SiteManifest:
-        """Declare the representation this site trains on."""
+    def manifest(self) -> ClinicManifest:
+        """Declare the representation this clinic trains on."""
 
     def shared_keys(self) -> Sequence[str]:
         """Name the parameters that cross the boundary, in weight order.

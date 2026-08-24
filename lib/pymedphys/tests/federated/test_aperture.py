@@ -24,8 +24,8 @@ GRID = (8, 8, 8)
 
 
 def a_manifest():
-    return protocol.SiteManifest(
-        site_id="site-a",
+    return protocol.ClinicManifest(
+        clinic_id="clinic-a",
         grid_shape=GRID,
         voxel_spacing_mm=(2.0, 2.0, 2.0),
         structure_keys=("Brainstem", "Parotid_L"),
@@ -48,7 +48,7 @@ def a_policy(**overrides):
 def an_aperture(policy=None, path=None):
     return aperture_module.Aperture(
         policy=policy if policy is not None else a_policy(),
-        site_id="site-a",
+        clinic_id="clinic-a",
         audit_log_path=path,
         clock=lambda: datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc),
     )
@@ -148,7 +148,7 @@ def test_evaluation_goes_through_the_same_aperture():
 
 
 def test_a_rejection_is_recorded_rather_than_silently_dropped(tmp_path):
-    path = tmp_path / "audit" / "site-a.jsonl"
+    path = tmp_path / "audit" / "clinic-a.jsonl"
     aperture = an_aperture(path=path)
 
     with pytest.raises(aperture_module.ApertureViolation):
@@ -163,7 +163,7 @@ def test_a_rejection_is_recorded_rather_than_silently_dropped(tmp_path):
 
 
 def test_the_audit_log_answers_what_left_and_how_big(tmp_path):
-    path = tmp_path / "site-a.jsonl"
+    path = tmp_path / "clinic-a.jsonl"
     aperture = an_aperture(path=path)
 
     aperture.emit(
@@ -175,7 +175,7 @@ def test_the_audit_log_answers_what_left_and_how_big(tmp_path):
 
     (record,) = aperture_module.read_audit_log(path)
 
-    assert record["site_id"] == "site-a"
+    assert record["clinic_id"] == "clinic-a"
     assert record["round"] == 3
     assert record["array_count"] == 1
     assert record["example_count"] == 20
@@ -186,7 +186,7 @@ def test_the_audit_log_answers_what_left_and_how_big(tmp_path):
 
 
 def test_the_audit_log_is_appended_to_not_rewritten(tmp_path):
-    path = tmp_path / "site-a.jsonl"
+    path = tmp_path / "clinic-a.jsonl"
 
     for round_number in range(1, 4):
         aperture = an_aperture(path=path)
@@ -214,13 +214,13 @@ def test_the_payload_digest_covers_the_payload_and_nothing_else():
     )
 
 
-def test_a_policy_derived_from_a_manifest_forbids_that_site_s_grid():
+def test_a_policy_derived_from_a_manifest_forbids_that_clinic_s_grid():
     policy = aperture_module.policy_from_manifest(
         a_manifest(), max_bytes_per_round=1000, allowed_metric_keys=["train_loss"]
     )
 
     assert GRID in policy.forbidden_shapes
-    # A one-hot stack of the site's own structures is voxel data too.
+    # A one-hot stack of the clinic's own structures is voxel data too.
     assert (2,) + GRID in policy.forbidden_shapes
 
 

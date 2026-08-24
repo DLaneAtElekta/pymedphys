@@ -22,7 +22,7 @@ OTHER_HASH = "b" * 64
 
 def a_manifest(**overrides):
     fields = {
-        "site_id": "site-a",
+        "clinic_id": "clinic-a",
         "grid_shape": (64, 64, 64),
         "voxel_spacing_mm": (2.0, 2.0, 2.0),
         "structure_keys": ("Brainstem", "Parotid_L", "Parotid_R"),
@@ -30,14 +30,14 @@ def a_manifest(**overrides):
     }
     fields.update(overrides)
 
-    return protocol.SiteManifest(**fields)
+    return protocol.ClinicManifest(**fields)
 
 
-def test_site_id_and_notes_do_not_affect_the_compatibility_key():
-    # Sites are meant to differ here; they are not meant to differ anywhere
+def test_clinic_id_and_notes_do_not_affect_the_compatibility_key():
+    # Clinics are meant to differ here; they are not meant to differ anywhere
     # else in the manifest.
-    first = a_manifest(site_id="site-a", notes="Scanner A")
-    second = a_manifest(site_id="site-b", notes="Scanner B")
+    first = a_manifest(clinic_id="clinic-a", notes="Scanner A")
+    second = a_manifest(clinic_id="clinic-b", notes="Scanner B")
 
     assert first.compatibility_key == second.compatibility_key
 
@@ -82,7 +82,7 @@ def test_spacing_must_match_the_grid():
     [
         {"grid_shape": (64, 0, 64)},
         {"voxel_spacing_mm": (2.0, -1.0, 2.0)},
-        {"site_id": ""},
+        {"clinic_id": ""},
         {"structure_vocabulary_sha256": "not-a-hash"},
         {"structure_vocabulary_sha256": "z" * 64},
     ],

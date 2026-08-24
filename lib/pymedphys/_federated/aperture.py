@@ -46,7 +46,7 @@ class ApertureViolation(Exception):
 
 @dataclasses.dataclass(frozen=True)
 class AperturePolicy:
-    """What a site permits to leave, per round.
+    """What a clinic permits to leave, per round.
 
     Parameters
     ----------
@@ -121,9 +121,9 @@ def policy_from_manifest(
     min_examples: int = 10,
     max_arrays: int | None = None,
 ) -> AperturePolicy:
-    """Build a policy whose forbidden shape is the site's own data grid.
+    """Build a policy whose forbidden shape is the clinic's own data grid.
 
-    The grid shape is the one shape a site knows is dangerous without having
+    The grid shape is the one shape a clinic knows is dangerous without having
     to think about it, and it is already declared in the manifest, so deriving
     it here removes a chance to get the two out of step.
     """
@@ -151,7 +151,7 @@ class Aperture:
     ----------
     policy
         The rules to enforce.
-    site_id
+    clinic_id
         Which clinic this aperture belongs to. Written to every audit record.
     audit_log_path
         Where to append audit records, one JSON object per line. ``None``
@@ -165,12 +165,12 @@ class Aperture:
     def __init__(
         self,
         policy: AperturePolicy,
-        site_id: str,
+        clinic_id: str,
         audit_log_path: str | pathlib.Path | None = None,
         clock: Callable[[], datetime.datetime] | None = None,
     ):
         self._policy = policy
-        self._site_id = site_id
+        self._clinic_id = clinic_id
         self._audit_log_path = (
             pathlib.Path(audit_log_path) if audit_log_path is not None else None
         )
@@ -185,8 +185,8 @@ class Aperture:
         return self._policy
 
     @property
-    def site_id(self) -> str:
-        return self._site_id
+    def clinic_id(self) -> str:
+        return self._clinic_id
 
     @property
     def records(self) -> tuple[dict[str, Any], ...]:
@@ -233,7 +233,7 @@ class Aperture:
         """Check and record an evaluation payload, or raise.
 
         Evaluation runs through the same aperture as training, because a
-        per-site loss computed over a handful of patients is a statistic about
+        per-clinic loss computed over a handful of patients is a statistic about
         those patients.
         """
 
@@ -364,7 +364,7 @@ class Aperture:
     ):
         record = {
             "timestamp": self._clock().isoformat(),
-            "site_id": self._site_id,
+            "clinic_id": self._clinic_id,
             "round": int(round_number),
             "kind": kind,
             "status": status,
@@ -406,7 +406,7 @@ def payload_digest(
 
     The digest covers dtype, shape and bytes of each array as well as the
     metrics and cohort size, so that an aggregator's copy of a payload can be
-    checked against the site's own audit record.
+    checked against the clinic's own audit record.
     """
 
     digest = hashlib.sha256()

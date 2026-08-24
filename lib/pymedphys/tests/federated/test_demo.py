@@ -54,7 +54,7 @@ def test_the_public_surface_imports_without_numpy_or_a_framework():
 
         import pymedphys.beta.federated as federated
 
-        assert federated.SiteManifest is not None
+        assert federated.ClinicManifest is not None
         assert federated.Aperture is not None
 
         eager = sorted(

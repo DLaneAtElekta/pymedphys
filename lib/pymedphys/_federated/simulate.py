@@ -25,20 +25,20 @@ from typing import Any, Callable, Mapping, Sequence
 
 from pymedphys._imports import numpy as np
 
-from .protocol import EvalResult, FitResult, SiteManifest, SiteTrainer
+from .protocol import EvalResult, FitResult, ClinicManifest, ClinicTrainer
 
 
 class ManifestMismatch(ValueError):
-    """Raised before round 1 when sites do not agree on the representation."""
+    """Raised before round 1 when clinics do not agree on the representation."""
 
 
 @dataclasses.dataclass(frozen=True)
 class RoundHistory:
-    """What happened in a single round, kept per site rather than averaged.
+    """What happened in a single round, kept per clinic rather than averaged.
 
-    Per-site evaluation is recorded separately on purpose. A federated model
+    Per-clinic evaluation is recorded separately on purpose. A federated model
     is a compromise that none of the participants would have chosen for
-    themselves, and per-site losses that diverge while the global parameter
+    themselves, and per-clinic losses that diverge while the global parameter
     converges are the honest picture of that -- worth showing, not smoothing.
     """
 
@@ -57,44 +57,44 @@ class FederationHistory:
     rounds: list[RoundHistory] = dataclasses.field(default_factory=list)
     weights: Sequence["np.ndarray"] = ()
 
-    def eval_loss_series(self, site_id: str) -> list[float]:
-        """Per-round evaluation loss for one site."""
+    def eval_loss_series(self, clinic_id: str) -> list[float]:
+        """Per-round evaluation loss for one clinic."""
 
         return [
-            round_history.eval_losses[site_id]
+            round_history.eval_losses[clinic_id]
             for round_history in self.rounds
-            if site_id in round_history.eval_losses
+            if clinic_id in round_history.eval_losses
         ]
 
 
-def check_manifest_compatibility(trainers: Sequence[SiteTrainer]) -> str:
+def check_manifest_compatibility(trainers: Sequence[ClinicTrainer]) -> str:
     """Compare manifests before round 1 and return the shared key.
 
     Raises
     ------
     ManifestMismatch
-        If the sites disagree on grid, spacing, canonical structures, the
+        If the clinics disagree on grid, spacing, canonical structures, the
         shared vocabulary hash, or the set of shared parameters. The message
-        names the disagreeing sites, because "training failed" is not an
+        names the disagreeing clinics, because "training failed" is not an
         actionable error at 2am in a hospital.
     """
 
     if not trainers:
-        raise ManifestMismatch("A federation needs at least one site.")
+        raise ManifestMismatch("A federation needs at least one clinic.")
 
     manifests = [trainer.manifest() for trainer in trainers]
 
-    site_ids = [manifest.site_id for manifest in manifests]
-    if len(set(site_ids)) != len(site_ids):
-        raise ManifestMismatch(f"Site ids must be unique, got {site_ids}.")
+    clinic_ids = [manifest.clinic_id for manifest in manifests]
+    if len(set(clinic_ids)) != len(clinic_ids):
+        raise ManifestMismatch(f"Clinic ids must be unique, got {clinic_ids}.")
 
     by_key: dict[str, list[str]] = {}
     for manifest in manifests:
-        by_key.setdefault(manifest.compatibility_key, []).append(manifest.site_id)
+        by_key.setdefault(manifest.compatibility_key, []).append(manifest.clinic_id)
 
     if len(by_key) > 1:
         raise ManifestMismatch(
-            "Sites do not agree on the data representation. Groups by "
+            "Clinics do not agree on the data representation. Groups by "
             f"compatibility key: {_describe_groups(by_key)}. "
             f"Differing fields: {_describe_differences(manifests)}."
         )
@@ -104,16 +104,16 @@ def check_manifest_compatibility(trainers: Sequence[SiteTrainer]) -> str:
         by_shared: dict[tuple[str, ...], list[str]] = {}
         for trainer, manifest in zip(trainers, manifests):
             by_shared.setdefault(tuple(trainer.shared_keys()), []).append(
-                manifest.site_id
+                manifest.clinic_id
             )
 
         groups = [
-            {"shared_keys": list(key), "sites": sites}
-            for key, sites in by_shared.items()
+            {"shared_keys": list(key), "clinics": clinics}
+            for key, clinics in by_shared.items()
         ]
 
         raise ManifestMismatch(
-            f"Sites do not agree on which parameters are shared. Groups: {groups}."
+            f"Clinics do not agree on which parameters are shared. Groups: {groups}."
         )
 
     return manifests[0].compatibility_key
@@ -135,19 +135,19 @@ def federated_average(
     lengths = {len(weights) for weights in weight_sets}
     if len(lengths) > 1:
         raise ValueError(
-            f"Sites returned differing numbers of arrays: {sorted(lengths)}."
+            f"Clinics returned differing numbers of arrays: {sorted(lengths)}."
         )
 
     total = float(sum(num_examples))
     if total <= 0:
-        raise ValueError("Total example count across sites must be positive.")
+        raise ValueError("Total example count across clinics must be positive.")
 
     aggregated = []
     for index in range(next(iter(lengths))):
         shapes = {np.shape(weights[index]) for weights in weight_sets}
         if len(shapes) > 1:
             raise ValueError(
-                f"Sites disagree on the shape of array {index}: {sorted(shapes)}."
+                f"Clinics disagree on the shape of array {index}: {sorted(shapes)}."
             )
 
         stacked = sum(
@@ -160,7 +160,7 @@ def federated_average(
 
 
 def run_federation(
-    trainers: Sequence[SiteTrainer],
+    trainers: Sequence[ClinicTrainer],
     rounds: int,
     config_fn: Callable[[int], Mapping[str, Any]] | None = None,
     evaluate: bool = True,
@@ -170,16 +170,16 @@ def run_federation(
     Parameters
     ----------
     trainers
-        The participating sites.
+        The participating clinics.
     rounds
         Number of federated rounds.
     config_fn
-        Maps a round number to the config handed to every site. This is how
-        the server keeps sites in step on schedules such as a KL warm-up --
-        ``beta`` is decided centrally, not per site.
+        Maps a round number to the config handed to every clinic. This is how
+        the server keeps clinics in step on schedules such as a KL warm-up --
+        ``beta`` is decided centrally, not per clinic.
     evaluate
         Whether to evaluate after each round. Evaluation goes through each
-        site's aperture like anything else.
+        clinic's aperture like anything else.
     """
 
     compatibility_key = check_manifest_compatibility(trainers)
@@ -207,21 +207,21 @@ def run_federation(
             for trainer in trainers:
                 trainer.set_weights(weights)
                 result: EvalResult = trainer.evaluate(config)
-                site_id = trainer.manifest().site_id
-                eval_losses[site_id] = result.loss
-                eval_metrics[site_id] = dict(result.metrics)
+                clinic_id = trainer.manifest().clinic_id
+                eval_losses[clinic_id] = result.loss
+                eval_metrics[clinic_id] = dict(result.metrics)
 
         history.rounds.append(
             RoundHistory(
                 round_number=round_number,
                 fit_metrics={
-                    trainer.manifest().site_id: dict(result.metrics)
+                    trainer.manifest().clinic_id: dict(result.metrics)
                     for trainer, result in zip(trainers, fit_results)
                 },
                 eval_losses=eval_losses,
                 eval_metrics=eval_metrics,
                 num_examples={
-                    trainer.manifest().site_id: result.num_examples
+                    trainer.manifest().clinic_id: result.num_examples
                     for trainer, result in zip(trainers, fit_results)
                 },
             )
@@ -236,10 +236,10 @@ def run_federation(
 
 
 def _describe_groups(by_key: Mapping[str, Sequence[str]]) -> dict[str, list[str]]:
-    return {key[:12]: list(sites) for key, sites in by_key.items()}
+    return {key[:12]: list(clinics) for key, clinics in by_key.items()}
 
 
-def _describe_differences(manifests: Sequence[SiteManifest]) -> list[str]:
+def _describe_differences(manifests: Sequence[ClinicManifest]) -> list[str]:
     differing = []
     for field in manifests[0].compatibility_fields:
         values = {repr(manifest.compatibility_fields[field]) for manifest in manifests}

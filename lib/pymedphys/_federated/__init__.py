@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""A site-side boundary for federated learning.
+"""A clinic-side boundary for federated learning.
 
 PyMedPhys ships the client half of a federation: the aperture that decides
 what may leave a clinic, the contract a local trainer implements, and an
 in-process loop to exercise both without a server. Hosting an aggregator is
-deliberately out of scope -- sites federate with whoever they choose.
+deliberately out of scope -- clinics federate with whoever they choose.
 """

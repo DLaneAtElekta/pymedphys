@@ -11,7 +11,7 @@ This project adheres to
 
 ### New features and enhancements
 
-- A new, beta, site-side boundary for federated learning, at
+- A new, beta, clinic-side boundary for federated learning, at
   `pymedphys.beta.federated`. It provides the aperture that enforces and logs
   what may leave a clinic, the framework-agnostic `SiteTrainer` contract that
   a local trainer implements, an in-process FedAvg loop for exercising both

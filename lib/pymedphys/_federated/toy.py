@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""A NumPy site trainer that fits a mean vector, for tests and teaching.
+"""A NumPy clinic trainer that fits a mean vector, for tests and teaching.
 
 The model is the smallest thing with a closed form answer, which is the point:
-the federated mean over non-IID sites must equal the pooled mean exactly, so a
+the federated mean over non-IID clinics must equal the pooled mean exactly, so a
 failure is unambiguously the plumbing rather than the optimiser.
 
-It also carries a site-local parameter that is deliberately excluded from
+It also carries a clinic-local parameter that is deliberately excluded from
 ``shared_keys``, which is the FedBN pattern in miniature.
 """
 
@@ -29,18 +29,18 @@ from typing import Any, Mapping, Sequence
 from pymedphys._imports import numpy as np
 
 from .aperture import Aperture
-from .protocol import EvalResult, FitResult, SiteManifest
+from .protocol import EvalResult, FitResult, ClinicManifest
 
 
 class MeanVectorTrainer:
-    """Fit the mean of a site's local data, sharing only that mean.
+    """Fit the mean of a clinic's local data, sharing only that mean.
 
     Parameters
     ----------
     data
         Local data, shaped ``(num_examples, num_features)``. Never leaves.
     manifest
-        The site's declaration of its representation.
+        The clinic's declaration of its representation.
     aperture
         The only egress. ``fit`` and ``evaluate`` return what it returns.
     leak_debug_volume
@@ -55,7 +55,7 @@ class MeanVectorTrainer:
     def __init__(
         self,
         data: "np.ndarray",
-        manifest: SiteManifest,
+        manifest: ClinicManifest,
         aperture: Aperture,
         leak_debug_volume: bool = False,
         leak_metric_key: str | None = None,
@@ -75,11 +75,11 @@ class MeanVectorTrainer:
 
         self._mean = np.zeros(self._data.shape[1], dtype=float)
 
-        # Site-local, never shared. Stands in for a normalisation statistic
+        # Clinic-local, never shared. Stands in for a normalisation statistic
         # that would be meaningless averaged across scanners.
         self._local_scale = np.std(self._data, axis=0)
 
-    def manifest(self) -> SiteManifest:
+    def manifest(self) -> ClinicManifest:
         return self._manifest
 
     def shared_keys(self) -> list[str]:
@@ -135,7 +135,7 @@ class MeanVectorTrainer:
 
     @property
     def local_scale(self) -> "np.ndarray":
-        """The site-local parameter, exposed so tests can show it stays local."""
+        """The clinic-local parameter, exposed so tests can show it stays local."""
 
         return self._local_scale.copy()
 

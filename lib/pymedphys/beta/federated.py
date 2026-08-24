@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Federated learning, site side. Beta: this API is expected to churn.
+"""Federated learning, clinic side. Beta: this API is expected to churn.
 
 Nothing here should enter the stable API before the roadmap reaches a real
-two-site deployment.
+two-clinic deployment.
 """
 
 # pylint: disable = unused-import
@@ -36,8 +36,8 @@ from pymedphys._federated.aperture import (
 from pymedphys._federated.protocol import (
     EvalResult,
     FitResult,
-    SiteManifest,
-    SiteTrainer,
+    ClinicManifest,
+    ClinicTrainer,
 )
 from pymedphys._federated.simulate import (
     FederationHistory,

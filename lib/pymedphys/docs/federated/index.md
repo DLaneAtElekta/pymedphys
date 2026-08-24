@@ -6,7 +6,7 @@ and is expected to churn. Nothing here is a claim of regulatory clearance;
 this is research infrastructure.
 ```
 
-A site-side boundary that lets a model be trained across clinics without
+A clinic-side boundary that lets a model be trained across clinics without
 patient data leaving any of them.
 
 ## Motivation
@@ -19,7 +19,7 @@ patients that no researcher can touch.
 
 Federated learning inverts the transfer: instead of moving data to the model,
 move the model to the data and move back only what was learned. PyMedPhys is
-an unusually good home for the site-side half of this, because it already
+an unusually good home for the clinic-side half of this, because it already
 lives where the data is — it speaks Mosaiq SQL, DICOM, and TG-263, and it is
 already installed on physics workstations inside hospital networks.
 
@@ -45,14 +45,14 @@ one policy object and one audit log.
 
 - Cohort selection and data extraction from Mosaiq (SQL index + DICOM payload).
 - Canonicalisation to a declared common representation (grid, spacing, TG-263).
-- A framework-agnostic `SiteTrainer` contract.
+- A framework-agnostic `ClinicTrainer` contract.
 - An egress policy + audit mechanism (the aperture).
 - Thin adapters to at least one federated learning framework (Flower first).
-- A worked demo: a 3D VAE over CT + OARs trained across simulated sites.
+- A worked demo: a 3D VAE over CT + OARs trained across simulated clinics.
 
 **Out of scope, deliberately**
 
-- Running or hosting an aggregation server. Sites federate with whoever they
+- Running or hosting an aggregation server. Clinics federate with whoever they
   choose; PyMedPhys ships the client half.
 - Model architectures as library API. The demo VAE is an example, not a
   supported model.
@@ -68,15 +68,15 @@ Stage 0 runs on NumPy alone — no server, no framework, no data:
 python -m pymedphys._federated.demo
 ```
 
-Three simulated non-IID sites, in-process FedAvg over eight rounds converging
-on the pooled mean; the manifest gate rejecting a site with a different
+Three simulated non-IID clinics, in-process FedAvg over eight rounds converging
+on the pooled mean; the manifest gate rejecting a clinic with a different
 structure vocabulary; the aperture rejecting both a voxel-shaped array and a
 metric key that is not on the whitelist; and an audit line per emission.
 
 One result from that run is carried forward into the demo rather than hidden:
-per-site evaluation loss **diverges** across rounds while the global parameter
-converges, and no site does as well as it would have alone. That is the honest
-picture of federating heterogeneous sites — the global model is a compromise
+per-clinic evaluation loss **diverges** across rounds while the global parameter
+converges, and no clinic does as well as it would have alone. That is the honest
+picture of federating heterogeneous clinics — the global model is a compromise
 that none of the participants would have chosen for themselves. Showing it
 builds more trust than smoothing it.
 

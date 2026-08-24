@@ -14,8 +14,8 @@
 
 """A runnable Stage 0 demonstration.
 
-Three simulated non-IID sites, in-process FedAvg, converging to the pooled
-mean; the manifest gate rejecting a site with a different vocabulary hash; the
+Three simulated non-IID clinics, in-process FedAvg, converging to the pooled
+mean; the manifest gate rejecting a clinic with a different vocabulary hash; the
 aperture rejecting both a voxel shaped array and a metric key that is not on
 the whitelist; and an audit line per emission::
 
@@ -33,7 +33,7 @@ from pymedphys._imports import numpy as np
 
 from . import simulate, toy
 from .aperture import Aperture, ApertureViolation, policy_from_manifest, read_audit_log
-from .protocol import SiteManifest
+from .protocol import ClinicManifest
 
 GRID = (32, 32, 32)
 VOCABULARY_HASH = "9" * 64
@@ -45,15 +45,15 @@ LEARNING_RATE = 0.5
 
 # Non-IID on purpose: differing cohort sizes, anatomy centres and spreads, as
 # three clinics would be.
-SITES = [
-    {"site_id": "north-general", "num_examples": 40, "centre": 0.0, "spread": 1.0},
-    {"site_id": "coastal-cancer", "num_examples": 120, "centre": 5.0, "spread": 0.2},
-    {"site_id": "valley-regional", "num_examples": 25, "centre": -3.0, "spread": 4.0},
+CLINICS = [
+    {"clinic_id": "north-general", "num_examples": 40, "centre": 0.0, "spread": 1.0},
+    {"clinic_id": "coastal-cancer", "num_examples": 120, "centre": 5.0, "spread": 0.2},
+    {"clinic_id": "valley-regional", "num_examples": 25, "centre": -3.0, "spread": 4.0},
 ]
 
 
-def build_site(
-    site_id: str,
+def build_clinic(
+    clinic_id: str,
     num_examples: int,
     centre: float,
     spread: float,
@@ -64,8 +64,8 @@ def build_site(
 ) -> toy.MeanVectorTrainer:
     """Assemble one clinic: a manifest, an aperture, and a local trainer."""
 
-    manifest = SiteManifest(
-        site_id=site_id,
+    manifest = ClinicManifest(
+        clinic_id=clinic_id,
         grid_shape=GRID,
         voxel_spacing_mm=(2.0, 2.0, 2.0),
         structure_keys=("Brainstem", "Parotid_L", "Parotid_R", "SpinalCord"),
@@ -79,19 +79,19 @@ def build_site(
             allowed_metric_keys=["train_loss"],
             min_examples=10,
         ),
-        site_id=site_id,
-        audit_log_path=audit_dir / f"{site_id}.jsonl",
+        clinic_id=clinic_id,
+        audit_log_path=audit_dir / f"{clinic_id}.jsonl",
     )
 
     return toy.MeanVectorTrainer(
-        data=site_data(num_examples, centre, spread, seed),
+        data=clinic_data(num_examples, centre, spread, seed),
         manifest=manifest,
         aperture=aperture,
         **trainer_overrides,
     )
 
 
-def site_data(
+def clinic_data(
     num_examples: int, centre: float, spread: float, seed: int
 ) -> "np.ndarray":
     """One clinic's local data. In a real deployment this never leaves."""
@@ -102,11 +102,11 @@ def site_data(
 
 
 def build_federation(audit_dir: pathlib.Path, **overrides):
-    """The three demonstration sites."""
+    """The three demonstration clinics."""
 
     return [
-        build_site(seed=seed, audit_dir=audit_dir, **spec, **overrides)
-        for seed, spec in enumerate(SITES)
+        build_clinic(seed=seed, audit_dir=audit_dir, **spec, **overrides)
+        for seed, spec in enumerate(CLINICS)
     ]
 
 
@@ -116,8 +116,8 @@ def pooled_mean() -> "np.ndarray":
     return np.mean(
         np.concatenate(
             [
-                site_data(spec["num_examples"], spec["centre"], spec["spread"], seed)
-                for seed, spec in enumerate(SITES)
+                clinic_data(spec["num_examples"], spec["centre"], spec["spread"], seed)
+                for seed, spec in enumerate(CLINICS)
             ]
         ),
         axis=0,
@@ -133,7 +133,7 @@ def main(audit_dir: str | pathlib.Path | None = None) -> int:
         directory.mkdir(parents=True, exist_ok=True)
 
         _federate(directory)
-        _reject_mismatched_site(directory)
+        _reject_mismatched_clinic(directory)
         _reject_voxel_shaped_array(directory)
         _reject_undeclared_metric(directory)
         _show_audit_log(directory)
@@ -142,7 +142,7 @@ def main(audit_dir: str | pathlib.Path | None = None) -> int:
 
 
 def _federate(audit_dir: pathlib.Path):
-    print(f"1. Three non-IID sites, {ROUNDS} rounds of FedAvg")
+    print(f"1. Three non-IID clinics, {ROUNDS} rounds of FedAvg")
 
     trainers = build_federation(audit_dir / "federation")
     history = simulate.run_federation(
@@ -163,35 +163,35 @@ def _federate(audit_dir: pathlib.Path):
         "   full local step reaches it exactly in one round)"
     )
 
-    print("\n   per-site evaluation loss, by round:")
-    for seed, spec in enumerate(SITES):
-        series = history.eval_loss_series(spec["site_id"])
+    print("\n   per-clinic evaluation loss, by round:")
+    for seed, spec in enumerate(CLINICS):
+        series = history.eval_loss_series(spec["clinic_id"])
         alone = float(
             np.var(
-                site_data(spec["num_examples"], spec["centre"], spec["spread"], seed),
+                clinic_data(spec["num_examples"], spec["centre"], spec["spread"], seed),
                 axis=0,
             ).mean()
         )
         formatted = ", ".join(f"{loss:8.3f}" for loss in series)
-        print(f"     {spec['site_id']:>16}: {formatted}   (alone: {alone:.3f})")
+        print(f"     {spec['clinic_id']:>16}: {formatted}   (alone: {alone:.3f})")
 
     print(
-        "\n   The site losses do not all improve, and none reaches what that site\n"
+        "\n   The clinic losses do not all improve, and none reaches what that clinic\n"
         "   could have managed alone. The global model is a compromise none of\n"
         "   the participants would have chosen for themselves. That is the honest\n"
-        "   picture of federating heterogeneous sites, and worth showing.\n"
+        "   picture of federating heterogeneous clinics, and worth showing.\n"
     )
 
 
-def _reject_mismatched_site(audit_dir: pathlib.Path):
-    print("2. A site whose structure vocabulary disagrees")
+def _reject_mismatched_clinic(audit_dir: pathlib.Path):
+    print("2. A clinic whose structure vocabulary disagrees")
 
     trainers = build_federation(audit_dir / "mismatch")
-    trainers[2] = build_site(
+    trainers[2] = build_clinic(
         seed=2,
         audit_dir=audit_dir / "mismatch",
         vocabulary_sha256="0" * 64,
-        **SITES[2],
+        **CLINICS[2],
     )
 
     try:
@@ -199,18 +199,18 @@ def _reject_mismatched_site(audit_dir: pathlib.Path):
     except simulate.ManifestMismatch as mismatch:
         print(f"   rejected before round 1: {mismatch}\n")
     else:
-        raise AssertionError("The manifest gate failed to reject a mismatched site.")
+        raise AssertionError("The manifest gate failed to reject a mismatched clinic.")
 
 
 def _reject_voxel_shaped_array(audit_dir: pathlib.Path):
     print("3. A debugging tensor shaped like a patient")
 
     trainers = build_federation(audit_dir / "leak-volume")
-    trainers[0] = build_site(
+    trainers[0] = build_clinic(
         seed=0,
         audit_dir=audit_dir / "leak-volume",
         leak_debug_volume=True,
-        **SITES[0],
+        **CLINICS[0],
     )
 
     try:
@@ -225,11 +225,11 @@ def _reject_undeclared_metric(audit_dir: pathlib.Path):
     print("4. An identifier travelling as a metric")
 
     trainers = build_federation(audit_dir / "leak-metric")
-    trainers[0] = build_site(
+    trainers[0] = build_clinic(
         seed=0,
         audit_dir=audit_dir / "leak-metric",
         leak_metric_key="patient_mrn",
-        **SITES[0],
+        **CLINICS[0],
     )
 
     try:
@@ -243,7 +243,7 @@ def _reject_undeclared_metric(audit_dir: pathlib.Path):
 def _show_audit_log(audit_dir: pathlib.Path):
     print("5. What left the clinic, per the audit log")
 
-    path = audit_dir / "federation" / f"{SITES[0]['site_id']}.jsonl"
+    path = audit_dir / "federation" / f"{CLINICS[0]['clinic_id']}.jsonl"
     records = read_audit_log(path)
 
     header = (
