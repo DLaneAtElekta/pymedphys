@@ -49,6 +49,14 @@
 .. toctree::
     :hidden:
     :maxdepth: 3
+    :caption: Federated Learning
+
+    federated/index
+
+
+.. toctree::
+    :hidden:
+    :maxdepth: 3
     :caption: Contributors Guide
 
     contrib/index
