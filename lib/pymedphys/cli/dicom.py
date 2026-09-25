@@ -23,6 +23,7 @@ from pymedphys._dicom.header import (
     adjust_RED_cli,
 )
 from pymedphys._dicom.structure.merge import merge_contours_cli
+from pymedphys._dicom.web.server import web_cli
 
 
 def set_up_dicom_cli(subparsers):
@@ -38,6 +39,7 @@ def set_up_dicom_cli(subparsers):
     adjust_RED_by_structure_name(dicom_subparsers)
     listen(dicom_subparsers)
     send(dicom_subparsers)
+    web(dicom_subparsers)
 
     return dicom_parser, dicom_subparsers
 
@@ -204,9 +206,7 @@ def anonymise(dicom_subparsers):
         "-p",
         "--keep_private_tags",
         action="store_true",
-        help=(
-            "Use this flag to preserve private tags in the " "anonymised DICOM files."
-        ),
+        help=("Use this flag to preserve private tags in the anonymised DICOM files."),
     )
 
     unknown_tags_group = parser.add_mutually_exclusive_group()
@@ -275,3 +275,49 @@ def send(dicom_subparsers):
         help="The Called AE Title",
     )
     parser.set_defaults(func=send_cli)
+
+
+def web(dicom_subparsers):
+    parser = dicom_subparsers.add_parser(
+        "web",
+        help=(
+            "Serve DICOM objects stored within Mosaiq over DICOMweb "
+            "(QIDO-RS search and WADO-RS instance retrieve)"
+        ),
+    )
+
+    parser.add_argument(
+        "mosaiq_hostname", type=str, help="The hostname of the Mosaiq SQL server"
+    )
+    parser.add_argument(
+        "--mosaiq_port", default=1433, type=int, help="The Mosaiq SQL server port"
+    )
+    parser.add_argument(
+        "--mosaiq_database",
+        default="MOSAIQ",
+        type=str,
+        help="The Mosaiq database name",
+    )
+    parser.add_argument(
+        "-p", "--port", default=8042, type=int, help="The port to serve on"
+    )
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        type=str,
+        help=(
+            "The host/IP to bind to. There is no authentication, so only "
+            "bind to a non-local address on a trusted network."
+        ),
+    )
+    parser.add_argument(
+        "--schema",
+        default=None,
+        type=str,
+        help=(
+            "A TOML file overriding the Mosaiq DICOM table and column "
+            "names, see pymedphys._dicom.web.schema.MosaiqDicomSchema"
+        ),
+    )
+
+    parser.set_defaults(func=web_cli)
