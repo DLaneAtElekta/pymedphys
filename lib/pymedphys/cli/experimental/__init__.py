@@ -15,6 +15,7 @@
 
 from .dicom import dicom_cli
 from .pinnacle import pinnacle_cli
+from .qa_agent import qa_agent_cli
 
 
 def experimental_cli(subparsers):
@@ -25,5 +26,6 @@ def experimental_cli(subparsers):
 
     dicom_cli(experimental_subparsers)
     pinnacle_cli(experimental_subparsers)
+    qa_agent_cli(experimental_subparsers)
 
     return experimental_parser
